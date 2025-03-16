@@ -1,5 +1,5 @@
 aiohttp
-Pyrogram==2.0.106
-python-dotenv==1.0.1
+pyrofork==2.3.4
+python-dotenv
 TgCrypto
-feedparser==6.0.10
+feedparser
