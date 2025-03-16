@@ -3,7 +3,7 @@ import feedparser
 import re
 import logging
 from pyrogram import Client
-from config import BOT, API, WEB, OWNER, CHANNEL  # Ensure CHANNEL is added in config
+from config import BOT, API, WEB, OWNER, CHANNEL  # Import CHANNEL from config
 
 # Logging setup
 logging.getLogger().setLevel(logging.INFO)
@@ -20,7 +20,7 @@ class Private_Bots(Client):
             plugins=dict(root="plugins"),
             workers=16,
         )
-        self.channel_id = int(CHANNEL.ID)  # Ensure your config has CHANNEL.ID
+        self.channel_id = int(CHANNEL.ID)  # Use the new channel ID from config
         self.last_posted_links = set()  # To track previously posted torrents
 
     async def start(self):
