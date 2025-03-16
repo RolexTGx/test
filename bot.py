@@ -82,7 +82,7 @@ def crawl_yts():
     torrents = []
     for entry in feed.entries:
         download_link = entry.enclosures[0]["href"]  # Direct download link
-        torrents.append(f"/l {download_link}")
+        torrents.append(f" {download_link}")
 
     return torrents[:5]  # Limit to the latest 5 torrents
 
