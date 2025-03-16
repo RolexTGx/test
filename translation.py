@@ -19,7 +19,7 @@ class INLINE:
             ],
             [
                 InlineKeyboardButton(
-                    TEXT.UPDATES_CHANNEL, url="https://t.me/Private_Bots"
+                    TEXT.UPDATES_CHANNEL, url="https://t.me/MNBots"
                 ),
             ],
             [
