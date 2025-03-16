@@ -1,6 +1,6 @@
-python-3.11.6
 aiohttp
 pyrofork==2.3.4
 python-dotenv
 TgCrypto
 feedparser
+
