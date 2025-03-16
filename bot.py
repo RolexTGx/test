@@ -1,13 +1,24 @@
 import asyncio
 import feedparser
-import re
 import logging
+import threading
+from flask import Flask
 from pyrogram import Client
 from config import BOT, API, WEB, OWNER, CHANNEL  # Import CHANNEL from config
 
 # Logging setup
 logging.getLogger().setLevel(logging.INFO)
 logging.getLogger("pyrogram").setLevel(logging.ERROR)
+
+# Flask app for health check
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "Bot is running!"
+
+def run_flask():
+    app.run(host='0.0.0.0', port=8000)
 
 class Private_Bots(Client):
 
@@ -75,5 +86,6 @@ def crawl_yts():
 
     return torrents[:5]  # Limit to the latest 5 torrents
 
-# Start the bot
-Private_Bots().run()
+if __name__ == "__main__":
+    threading.Thread(target=run_flask).start()
+    Private_Bots().run()
