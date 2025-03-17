@@ -70,7 +70,7 @@ class Private_Bots(Client):
                 
                 if new_torrents:
                     for torrent in new_torrents:
-                        message = f"{torrent['title']}\n{torrent['size']}\n\n#tmv\n{torrent['link']}"
+                        message = f"{torrent['title']}\n{torrent['size']}\n\n#yts\n{torrent['link']}"
                         await self.send_message(self.channel_id, message)
                     self.last_posted_yts.update([t["link"] for t in new_torrents])
 
