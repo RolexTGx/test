@@ -4,4 +4,7 @@ python-dotenv
 TgCrypto
 feedparser
 Flask
-
+requests
+beautifulsoup4
+lxml
+torrent-parser
