@@ -4,7 +4,7 @@ from config import OWNER
 
 class TEXT:
     START = """
-<b>Hi {}, I'm Forward Tag Remover.\n\nForward me some messages, i will remove forward tag from them.\n\nAlso can do it in channels </b>[ <i>Just Make Me Admin</i> ].
+<b>Hi {}, I'm The Powerfull Personal Bot.\n\n Don't Waste Your Time </b>[ <i> Made With Love By @mn_movies_bot </i> ].
 """
     DEVELOPER = "Developer 💀"
     UPDATES_CHANNEL = "Updates Channel ❣️"
@@ -15,7 +15,7 @@ class INLINE:
     START_BTN = InlineKeyboardMarkup(
         [
             [
-                InlineKeyboardButton(TEXT.DEVELOPER, url=f"tg://user?id={OWNER.ID}"),
+                InlineKeyboardButton(TEXT.DEVELOPER, url="https://t.me/mn_movies_bot"),
             ],
             [
                 InlineKeyboardButton(
@@ -25,7 +25,7 @@ class INLINE:
             [
                 InlineKeyboardButton(
                     TEXT.SOURCE_CODE,
-                    url="https://github.com/prime-hritu/Forward-Tag-Remover",
+                    url="https://modijiurl.com/bggpW0",
                 ),
             ],
         ]
