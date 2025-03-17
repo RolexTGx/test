@@ -117,7 +117,7 @@ def crawl_yts():
 
 # Function to scrape TamilMV for torrents
 def crawl_tamilmv():
-    url = "https://www.1tamilmv.app/"
+    url = "https://www.1tamilmv.ms/"
     response = requests.get(url)
     soup = BeautifulSoup(response.content, "lxml")
 
