@@ -12,6 +12,7 @@ from bs4 import BeautifulSoup
 from flask import Flask
 from pyrogram import Client
 from config import BOT, API, WEB, OWNER, CHANNEL
+from plugins.yts import crawl_yts
 
 # Logging setup
 logging.getLogger().setLevel(logging.INFO)
