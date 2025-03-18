@@ -2,17 +2,10 @@ import asyncio
 import feedparser
 import logging
 import threading
-import requests
-import os
-import bencodepy
-import base64
-import hashlib
 import re
-from bs4 import BeautifulSoup
 from flask import Flask
 from pyrogram import Client
-from config import BOT, API, WEB, OWNER, CHANNEL
-from plugins.yts import crawl_yts
+from config import BOT, API, OWNER, CHANNEL  # Removed unused WEB import
 
 # Logging setup
 logging.getLogger().setLevel(logging.INFO)
@@ -28,23 +21,19 @@ def home():
 def run_flask():
     app.run(host='0.0.0.0', port=8000)
 
-class Private_Bots(Client):
+class MN_Bot(Client):  # Changed class name to MN_Bot
+
     def __init__(self):
         super().__init__(
-            "Forward-Tag-Remover",
+            "MN-Bot",
             API.ID,
             API.HASH,
             bot_token=BOT.TOKEN,
             plugins=dict(root="plugins"),
             workers=16,
         )
-        self.channel_id = int(CHANNEL.ID)
-        self.last_posted_yts = set()
-        self.last_posted_tamilmv = set()
-        self.last_posted_1337x_movies = set()
-        self.last_posted_1337x_series = set()
-        self.last_posted_piratebay = set()
-        self.last_posted_nyaa = set()
+        self.channel_id = int(CHANNEL.ID)  # Use the new channel ID from config
+        self.last_posted_links = set()  # To track previously posted torrents
 
     async def start(self):
         await super().start()
@@ -54,17 +43,14 @@ class Private_Bots(Client):
         self.mention = me.mention
         self.username = me.username
 
+        # Start background task for auto-posting torrents
         asyncio.create_task(self.auto_post_yts())
-        asyncio.create_task(self.auto_post_tamilmv())
-        asyncio.create_task(self.auto_post_1337x_movies())
-        asyncio.create_task(self.auto_post_1337x_series())
-        asyncio.create_task(self.auto_post_piratebay())
-        asyncio.create_task(self.auto_post_nyaa())
 
         await self.send_message(
             chat_id=int(OWNER.ID),
             text=f"{me.first_name} ✅✅ BOT started successfully ✅✅",
         )
+
         logging.info(f"{me.first_name} ✅✅ BOT started successfully ✅✅")
 
     async def stop(self, *args):
@@ -72,66 +58,49 @@ class Private_Bots(Client):
         logging.info("Bot Stopped 🙄")
 
     async def auto_post_yts(self):
+        """Fetch and send new YTS torrents every 30 minutes"""
         while True:
             try:
                 torrents = crawl_yts()
-                new_torrents = [t for t in torrents if t["link"] not in self.last_posted_yts]
+                new_torrents = [t for t in torrents if t["link"] not in self.last_posted_links]
+                
                 if new_torrents:
                     for torrent in new_torrents:
-                        message = f"{torrent['link']}\n\n🎬 {torrent['title']}\n📦 {torrent['size']}\n\n#yts"
+                        message = f"{torrent['link']}\n\n🎬 {torrent['title']}\n📦 {torrent['size']}\n\n#yts powered by @MNBOTS"
                         await self.send_message(self.channel_id, message)
-                    self.last_posted_yts.update([t["link"] for t in new_torrents])
-                logging.info("✅ Auto-posted new YTS torrents")
+                        self.last_posted_links.add(torrent["link"])
+
+                    logging.info("✅ Auto-posted new YTS torrents")
             except Exception as e:
                 logging.error(f"⚠️ Error in auto_post_yts: {e}")
-            await asyncio.sleep(300)
 
-    async def auto_post_1337x_movies(self):
-        while True:
-            try:
-                torrents = crawl_1337x("Movies")
-                new_torrents = [t for t in torrents if t["link"] not in self.last_posted_1337x_movies]
-                if new_torrents:
-                    for torrent in new_torrents:
-                        message = f"{torrent['link']}\n\n🎥 {torrent['title']}\n📦 {torrent['size']}\n\n#1337x #Movies"
-                        await self.send_message(self.channel_id, message)
-                    self.last_posted_1337x_movies.update([t["link"] for t in new_torrents])
-                logging.info("✅ Auto-posted new 1337x movies")
-            except Exception as e:
-                logging.error(f"⚠️ Error in auto_post_1337x_movies: {e}")
-            await asyncio.sleep(300)
+            await asyncio.sleep(1800)  # Wait 30 minutes before checking again
 
-    async def auto_post_1337x_series(self):
-        while True:
-            try:
-                torrents = crawl_1337x("TV")
-                new_torrents = [t for t in torrents if t["link"] not in self.last_posted_1337x_series]
-                if new_torrents:
-                    for torrent in new_torrents:
-                        message = f"{torrent['link']}\n\n📺 {torrent['title']}\n📦 {torrent['size']}\n\n#1337x #Series"
-                        await self.send_message(self.channel_id, message)
-                    self.last_posted_1337x_series.update([t["link"] for t in new_torrents])
-                logging.info("✅ Auto-posted new 1337x series")
-            except Exception as e:
-                logging.error(f"⚠️ Error in auto_post_1337x_series: {e}")
-            await asyncio.sleep(300)
+# Function to fetch torrents from YTS RSS feed
+def crawl_yts():
+    url = "https://yts.mx/rss/0/all/all/0"
+    feed = feedparser.parse(url)
 
-    async def auto_post_nyaa(self):
-        while True:
-            try:
-                torrents = crawl_nyaa()
-                new_torrents = [t for t in torrents if t["link"] not in self.last_posted_nyaa]
-                if new_torrents:
-                    for torrent in new_torrents:
-                        message = f"{torrent['link']}\n\n🎌 {torrent['title']}\n📦 {torrent['size']}\n\n#Anime"
-                        await self.send_message(self.channel_id, message)
-                    self.last_posted_nyaa.update([t["link"] for t in new_torrents])
-                logging.info("✅ Auto-posted new Nyaa anime torrents")
-            except Exception as e:
-                logging.error(f"⚠️ Error in auto_post_nyaa: {e}")
-            await asyncio.sleep(300)
+    torrents = []
+    for entry in feed.entries:
+        title = entry.title  # Movie title
+        size = parse_size_yts(entry.description)  # Extract size
+        link = entry.enclosures[0]["href"]  # Torrent link
+
+        if size:
+            torrents.append({
+                "title": title,
+                "size": size,
+                "link": link
+            })
+
+    return torrents[:15]  # Limit to the latest 15 torrents
+
+# Extract size from description (YTS format: "<b>Size:</b> 1.2 GB")
+def parse_size_yts(description):
+    match = re.search(r"<b>Size:</b>\s*([\d.]+\s*[GMK]B)", description)
+    return match.group(1) if match else "Unknown"
 
 if __name__ == "__main__":
     threading.Thread(target=run_flask).start()
-    Private_Bots().run()
-
+    MN_Bot().run()  # Updated to use MN_Bot
