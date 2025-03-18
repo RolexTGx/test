@@ -1,7 +1,7 @@
 {
-    "name": "Forward-Tag-Remover",
-    "description": "A Telegram bot that removes forward tag from messages",
-    "repository": "https://github.com/prime-hritu/Forward-Tag-Remover",
+    "name": "Assistent",
+    "description": "Do Nothing",
+    "repository": "https://github.com/mntg4u/assistent",
     "keywords": [
       "telegram",
       "bot"
