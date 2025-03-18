@@ -42,12 +42,14 @@ class Private_Bots(Client):
         self.last_posted_tamilmv = set()
         self.last_posted_1337x_movies = set()
         self.last_posted_1337x_series = set()
+        self.last_posted_piratebay = set()
         self.last_posted_nyaa = set()
 
     async def start(self):
         await super().start()
         me = await self.get_me()
-        BOT.USERNAME = f"@{me.username}" if me.username else "Unknown"
+        if me.username:
+            BOT.USERNAME = f"@{me.username}"
         self.mention = me.mention
         self.username = me.username
 
@@ -55,6 +57,7 @@ class Private_Bots(Client):
         asyncio.create_task(self.auto_post_tamilmv())
         asyncio.create_task(self.auto_post_1337x_movies())
         asyncio.create_task(self.auto_post_1337x_series())
+        asyncio.create_task(self.auto_post_piratebay())
         asyncio.create_task(self.auto_post_nyaa())
 
         await self.send_message(
@@ -80,22 +83,7 @@ class Private_Bots(Client):
                 logging.info("✅ Auto-posted new YTS torrents")
             except Exception as e:
                 logging.error(f"⚠️ Error in auto_post_yts: {e}")
-            await asyncio.sleep(800)
-
-    async def auto_post_tamilmv(self):
-        while True:
-            try:
-                torrents = crawl_tamilmv()
-                new_torrents = [t for t in torrents if t["link"] not in self.last_posted_tamilmv]
-                if new_torrents:
-                    for torrent in new_torrents:
-                        message = f"{torrent['link']}\n\n🎞 {torrent['title']}\n📦 {torrent['size']}\n\n#TamilMV"
-                        await self.send_message(self.channel_id, message)
-                    self.last_posted_tamilmv.update([t["link"] for t in new_torrents])
-                logging.info("✅ Auto-posted new TamilMV torrents")
-            except Exception as e:
-                logging.error(f"⚠️ Error in auto_post_tamilmv: {e}")
-            await asyncio.sleep(800)
+            await asyncio.sleep(300)
 
     async def auto_post_1337x_movies(self):
         while True:
@@ -110,7 +98,22 @@ class Private_Bots(Client):
                 logging.info("✅ Auto-posted new 1337x movies")
             except Exception as e:
                 logging.error(f"⚠️ Error in auto_post_1337x_movies: {e}")
-            await asyncio.sleep(800)
+            await asyncio.sleep(300)
+
+    async def auto_post_1337x_series(self):
+        while True:
+            try:
+                torrents = crawl_1337x("TV")
+                new_torrents = [t for t in torrents if t["link"] not in self.last_posted_1337x_series]
+                if new_torrents:
+                    for torrent in new_torrents:
+                        message = f"{torrent['link']}\n\n📺 {torrent['title']}\n📦 {torrent['size']}\n\n#1337x #Series"
+                        await self.send_message(self.channel_id, message)
+                    self.last_posted_1337x_series.update([t["link"] for t in new_torrents])
+                logging.info("✅ Auto-posted new 1337x series")
+            except Exception as e:
+                logging.error(f"⚠️ Error in auto_post_1337x_series: {e}")
+            await asyncio.sleep(300)
 
     async def auto_post_nyaa(self):
         while True:
@@ -125,29 +128,9 @@ class Private_Bots(Client):
                 logging.info("✅ Auto-posted new Nyaa anime torrents")
             except Exception as e:
                 logging.error(f"⚠️ Error in auto_post_nyaa: {e}")
-            await asyncio.sleep(800)
-
-# Fetch torrents from various sources
-def crawl_yts():
-    url = "https://yts.mx/rss/0/all/all/0"
-    feed = feedparser.parse(url)
-    return [{"title": entry.title, "size": "Unknown Size", "link": entry.enclosures[0]["href"]} for entry in feed.entries][:5]
-
-def crawl_tamilmv():
-    url = "https://www.1tamilmv.media/index.php?/rss/forums/2-tamil-movies/"
-    feed = feedparser.parse(url)
-    return [{"title": entry.title, "size": "Unknown Size", "link": entry.link} for entry in feed.entries][:5]
-
-def crawl_1337x(category):
-    url = f"https://1337x.to/rss/category/{category}/1/"
-    feed = feedparser.parse(url)
-    return [{"title": entry.title, "size": "Unknown Size", "link": entry.link} for entry in feed.entries][:5]
-
-def crawl_nyaa():
-    url = "https://nyaa.si/?page=rss"
-    feed = feedparser.parse(url)
-    return [{"title": entry.title, "size": "Unknown Size", "link": entry.link} for entry in feed.entries][:5]
+            await asyncio.sleep(300)
 
 if __name__ == "__main__":
     threading.Thread(target=run_flask).start()
     Private_Bots().run()
+
