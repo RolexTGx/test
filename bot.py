@@ -70,7 +70,7 @@ class Private_Bots(Client):
                 
                 if new_torrents:
                     for torrent in new_torrents:
-                        message = f"{torrent['title']}\n{torrent['size']}\n\n#yts\n{torrent['link']}"
+                        message = f"{torrent['link']}\n\n{torrent['title']}\n{torrent['size']}\n\n#yts"
                         await self.send_message(self.channel_id, message)
                     self.last_posted_yts.update([t["link"] for t in new_torrents])
 
@@ -89,7 +89,7 @@ class Private_Bots(Client):
 
                 if new_torrents:
                     for torrent in new_torrents:
-                        message = f"{torrent['title']}\n{torrent['size']}\n\n#tmv\n{torrent['link']}"
+                        message = f"{torrent['link']}\n\n{torrent['title']}\n{torrent['size']}\n\n#tmv"
                         await self.send_message(self.channel_id, message)
                     self.last_posted_tamilmv.update([t["link"] for t in new_torrents])
 
