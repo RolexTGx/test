@@ -80,7 +80,7 @@ class Private_Bots(Client):
                 logging.info("✅ Auto-posted new YTS torrents")
             except Exception as e:
                 logging.error(f"⚠️ Error in auto_post_yts: {e}")
-            await asyncio.sleep(1800)
+            await asyncio.sleep(800)
 
     async def auto_post_tamilmv(self):
         while True:
@@ -95,7 +95,7 @@ class Private_Bots(Client):
                 logging.info("✅ Auto-posted new TamilMV torrents")
             except Exception as e:
                 logging.error(f"⚠️ Error in auto_post_tamilmv: {e}")
-            await asyncio.sleep(1800)
+            await asyncio.sleep(800)
 
     async def auto_post_1337x_movies(self):
         while True:
@@ -110,7 +110,7 @@ class Private_Bots(Client):
                 logging.info("✅ Auto-posted new 1337x movies")
             except Exception as e:
                 logging.error(f"⚠️ Error in auto_post_1337x_movies: {e}")
-            await asyncio.sleep(1800)
+            await asyncio.sleep(800)
 
     async def auto_post_nyaa(self):
         while True:
@@ -125,7 +125,7 @@ class Private_Bots(Client):
                 logging.info("✅ Auto-posted new Nyaa anime torrents")
             except Exception as e:
                 logging.error(f"⚠️ Error in auto_post_nyaa: {e}")
-            await asyncio.sleep(1800)
+            await asyncio.sleep(800)
 
 # Fetch torrents from various sources
 def crawl_yts():
