@@ -43,8 +43,7 @@ class MN_Bot(Client):
         self.username = me.username
 
         # Start background tasks for auto-posting torrents
-        asyncio.create_task(self.auto_post_nyaasi())
-        asyncio.create_task(self.auto_post_yts())
+        asyncio.create_task(self.auto_post_torrents())
 
         await self.send_message(
             chat_id=int(OWNER.ID),
@@ -56,41 +55,22 @@ class MN_Bot(Client):
         await super().stop()
         logging.info("Bot Stopped 🙄")
 
-    async def auto_post_nyaasi(self):
-        """Fetch and send new Nyaa.si torrents every 10 minutes"""
+    async def auto_post_torrents(self):
+        """Fetch and send new torrents (Nyaa.si & YTS) every 30 minutes"""
         while True:
             try:
-                torrents = crawl_nyaasi()
+                torrents = crawl_nyaasi() + crawl_yts()  # Fetch torrents from both sources
                 new_torrents = [t for t in torrents if t["link"] not in self.last_posted_links]
 
                 for torrent in new_torrents:
-                    message = f"{torrent['link']}\n\n🎬 {torrent['title']}\n📦 {torrent['size']}\n\n#nyaasi powered by @MNBOTS"
+                    message = f"{torrent['link']}\n\n🎬 {torrent['title']}\n📦 {torrent['size']}\n\n#torrent powered by @MNBOTS"
                     await self.send_message(self.channel_id, message)
                     self.last_posted_links.add(torrent["link"])
 
                 if new_torrents:
-                    logging.info("✅ Auto-posted new Nyaa.si torrents")
+                    logging.info(f"✅ Auto-posted {len(new_torrents)} new torrents")
             except Exception as e:
-                logging.error(f"⚠️ Error in auto_post_nyaasi: {e}")
-
-            await asyncio.sleep(600)  # Wait 10 minutes before checking again
-
-    async def auto_post_yts(self):
-        """Fetch and send new YTS torrents every 30 minutes"""
-        while True:
-            try:
-                torrents = crawl_yts()
-                new_torrents = [t for t in torrents if t["link"] not in self.last_posted_links]
-
-                for torrent in new_torrents:
-                    message = f"{torrent['link']}\n\n🎬 {torrent['title']}\n📦 {torrent['size']}\n\n#yts powered by @MNBOTS"
-                    await self.send_message(self.channel_id, message)
-                    self.last_posted_links.add(torrent["link"])
-
-                if new_torrents:
-                    logging.info("✅ Auto-posted new YTS torrents")
-            except Exception as e:
-                logging.error(f"⚠️ Error in auto_post_yts: {e}")
+                logging.error(f"⚠️ Error in auto_post_torrents: {e}")
 
             await asyncio.sleep(1800)  # Wait 30 minutes before checking again
 
@@ -110,7 +90,7 @@ def crawl_nyaasi():
 
         torrents.append({"title": title, "size": size, "link": link})
 
-    return torrents[:15]  # Limit to the latest 15 torrents
+    return torrents[:30]  # Fetch latest 30 torrents
 
 # Function to fetch torrents from YTS RSS feed
 def crawl_yts():
@@ -128,7 +108,7 @@ def crawl_yts():
 
         torrents.append({"title": title, "size": size, "link": link})
 
-    return torrents[:15]  # Limit to the latest 15 torrents
+    return torrents[:30]  # Fetch latest 30 torrents
 
 # Extract size from Nyaa.si feed (e.g., "1.5 GiB" → "1.5 GB")
 def parse_size_nyaasi(size_str):
@@ -172,8 +152,10 @@ def parse_size_yts(description):
 
 # Check if torrent should be skipped based on size or resolution
 def should_skip_torrent(title, size_str):
-    # Skip torrents labeled as 4K (2160p)
+    # Skip torrents labeled as 4K (2160p), unless quality is unknown
     if "2160p" in title or "4K" in title:
+        if size_str == "Unknown":
+            return False  # Allow unknown quality
         logging.info(f"❌ Skipping 4K torrent: {title}")
         return True
 
