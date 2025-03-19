@@ -42,7 +42,7 @@ class MN_Bot(Client):
         self.mention = me.mention
         self.username = me.username
 
-        # Start background tasks for auto-posting torrents
+        # Start real-time monitoring for new torrents
         asyncio.create_task(self.auto_post_torrents())
 
         await self.send_message(
@@ -56,7 +56,7 @@ class MN_Bot(Client):
         logging.info("Bot Stopped 🙄")
 
     async def auto_post_torrents(self):
-        """Fetch and send new torrents (Nyaa.si & YTS) every 30 minutes"""
+        """Continuously check for new torrents and post them immediately"""
         while True:
             try:
                 torrents = crawl_nyaasi() + crawl_yts()  # Fetch torrents from both sources
@@ -68,11 +68,11 @@ class MN_Bot(Client):
                     self.last_posted_links.add(torrent["link"])
 
                 if new_torrents:
-                    logging.info(f"✅ Auto-posted {len(new_torrents)} new torrents")
+                    logging.info(f"✅ Posted {len(new_torrents)} new torrents")
             except Exception as e:
                 logging.error(f"⚠️ Error in auto_post_torrents: {e}")
 
-            await asyncio.sleep(1800)  # Wait 30 minutes before checking again
+            await asyncio.sleep(120)  # Check every 2 minutes for new torrents
 
 # Function to fetch torrents from Nyaa.si RSS feed
 def crawl_nyaasi():
@@ -82,7 +82,7 @@ def crawl_nyaasi():
     torrents = []
     for entry in feed.entries:
         title = entry.title
-        size = parse_size_nyaasi(entry.description)  # Fix applied
+        size = parse_size_nyaasi(entry.description)
         link = entry.link
 
         if should_skip_torrent(title, size):
@@ -90,8 +90,7 @@ def crawl_nyaasi():
 
         torrents.append({"title": title, "size": size, "link": link})
 
-    return torrents[:30]  # Fetch latest 30 torrents
-
+    return torrents[:15]  # Fetch latest 30 torrents
 
 # Function to fetch torrents from YTS RSS feed
 def crawl_yts():
@@ -109,7 +108,7 @@ def crawl_yts():
 
         torrents.append({"title": title, "size": size, "link": link})
 
-    return torrents[:30]  # Fetch latest 30 torrents
+    return torrents[:15]  # Fetch latest 30 torrents
 
 # Extract size from Nyaa.si feed (e.g., "1.5 GiB" → "1.5 GB")
 def parse_size_nyaasi(size_str):
