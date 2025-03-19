@@ -82,7 +82,7 @@ def crawl_nyaasi():
     torrents = []
     for entry in feed.entries:
         title = entry.title
-        size = parse_size_nyaasi(entry.torrents[0]["size"])
+        size = parse_size_nyaasi(entry.description)  # Fix applied
         link = entry.link
 
         if should_skip_torrent(title, size):
@@ -91,6 +91,7 @@ def crawl_nyaasi():
         torrents.append({"title": title, "size": size, "link": link})
 
     return torrents[:30]  # Fetch latest 30 torrents
+
 
 # Function to fetch torrents from YTS RSS feed
 def crawl_yts():
