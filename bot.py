@@ -63,7 +63,7 @@ class MN_Bot(Client):
                 new_torrents = [t for t in torrents if t["link"] not in self.last_posted_links]
 
                 for torrent in new_torrents:
-                    message = f"{torrent['link']}\n\n🎬 {torrent['title']}\n📦 {torrent['size']}\n\n#torrent powered by @MNBOTS"
+                    message = f"/ql2 {torrent['link']}\n\n🎬 {torrent['title']}\n📦 {torrent['size']}\n\n#torrent powered by @MNBOTS"
                     await self.send_message(self.channel_id, message)
                     self.last_posted_links.add(torrent["link"])
 
