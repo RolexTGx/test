@@ -3,8 +3,9 @@ import feedparser
 import logging
 import threading
 import re
+from time import sleep
 from flask import Flask
-from pyrogram import Client
+from pyrogram import Client, errors
 from config import BOT, API, OWNER, CHANNEL
 
 # Logging setup
@@ -59,13 +60,18 @@ class MN_Bot(Client):
         """Continuously check for new torrents and post them immediately"""
         while True:
             try:
-                torrents = crawl_nyaasi() + crawl_yts()  # Fetch torrents from both sources
+                torrents = crawl_nyaasi() + crawl_yts() + crawl_limetorrents()
                 new_torrents = [t for t in torrents if t["link"] not in self.last_posted_links]
 
                 for torrent in new_torrents:
                     message = f"{torrent['link']}\n\n🎬 {torrent['title']}\n📦 {torrent['size']}\n\n#torrent powered by @MNBOTS"
-                    await self.send_message(self.channel_id, message)
-                    self.last_posted_links.add(torrent["link"])
+                    try:
+                        await self.send_message(self.channel_id, message)
+                        self.last_posted_links.add(torrent["link"])
+                        await asyncio.sleep(3)  # Avoid flood wait
+                    except errors.FloodWait as e:
+                        logging.warning(f"⚠️ Flood wait triggered! Sleeping for {e.value} seconds.")
+                        await asyncio.sleep(e.value)
 
                 if new_torrents:
                     logging.info(f"✅ Posted {len(new_torrents)} new torrents")
@@ -78,95 +84,57 @@ class MN_Bot(Client):
 def crawl_nyaasi():
     url = "https://nyaa.si/?page=rss"
     feed = feedparser.parse(url)
-
     torrents = []
     for entry in feed.entries:
         title = entry.title
         size = parse_size_nyaasi(entry.description)
         link = entry.link
-
         if should_skip_torrent(title, size):
             continue
-
         torrents.append({"title": title, "size": size, "link": link})
-
-    return torrents[:15]  # Fetch latest 30 torrents
+    return torrents[:15]
 
 # Function to fetch torrents from YTS RSS feed
 def crawl_yts():
     url = "https://yts.mx/rss/0/all/all/0"
     feed = feedparser.parse(url)
-
     torrents = []
     for entry in feed.entries:
         title = entry.title
         size = parse_size_yts(entry.description)
         link = entry.enclosures[0]["href"]
-
         if should_skip_torrent(title, size):
             continue
-
         torrents.append({"title": title, "size": size, "link": link})
+    return torrents[:15]
 
-    return torrents[:15]  # Fetch latest 30 torrents
-
-# Extract size from Nyaa.si feed (e.g., "1.5 GiB" → "1.5 GB")
-def parse_size_nyaasi(size_str):
-    match = re.search(r"([\d.]+)\s*(GiB|MiB|KiB)", size_str)
-    if not match:
-        return "Unknown"
-    
-    size = float(match.group(1))
-    unit = match.group(2)
-
-    if unit == "GiB":
-        size_gb = size
-    elif unit == "MiB":
-        size_gb = size / 1024
-    elif unit == "KiB":
-        size_gb = size / (1024 * 1024)
-    else:
-        size_gb = 0
-
-    return f"{size_gb:.2f} GB"
-
-# Extract size from YTS feed
-def parse_size_yts(description):
-    match = re.search(r"<b>Size:</b>\s*([\d.]+)\s*(GB|MB|KB)", description)
-    if not match:
-        return "Unknown"
-
-    size = float(match.group(1))
-    unit = match.group(2)
-
-    if unit == "GB":
-        size_gb = size
-    elif unit == "MB":
-        size_gb = size / 1024
-    elif unit == "KB":
-        size_gb = size / (1024 * 1024)
-    else:
-        size_gb = 0
-
-    return f"{size_gb:.2f} GB"
+# Function to fetch torrents from LimeTorrents RSS feed
+def crawl_limetorrents():
+    url = "https://limetorrents.info/rss/"
+    feed = feedparser.parse(url)
+    torrents = []
+    for entry in feed.entries:
+        title = entry.title
+        size = "Unknown"  # LimeTorrents RSS doesn't provide size info
+        link = entry.link
+        if should_skip_torrent(title, size):
+            continue
+        torrents.append({"title": title, "size": size, "link": link})
+    return torrents[:15]
 
 # Check if torrent should be skipped based on size or resolution
 def should_skip_torrent(title, size_str):
-    # Skip torrents labeled as 4K (2160p), unless quality is unknown
     if "2160p" in title or "4K" in title:
         if size_str == "Unknown":
             return False  # Allow unknown quality
         logging.info(f"❌ Skipping 4K torrent: {title}")
         return True
-
-    # Convert size to float for comparison
     match = re.match(r"([\d.]+)", size_str)
     if match:
         size_gb = float(match.group(1))
         if size_gb > 3.5:
             logging.info(f"❌ Skipping large torrent: {title} ({size_gb} GB)")
             return True
-
     return False
 
 if __name__ == "__main__":
