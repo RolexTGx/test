@@ -63,7 +63,7 @@ class MN_Bot(Client):
                 torrents = crawl_nyaasi() + crawl_yts() + crawl_limetorrents()
                 new_torrents = [t for t in torrents if t["link"] not in self.last_posted_links]
 
-                for torrent in new_torrents:
+                for i, torrent in enumerate(new_torrents):
                     message = f"{torrent['link']}\n\n🎬 {torrent['title']}\n📦 {torrent['size']}\n\n#torrent powered by @MNBOTS"
                     try:
                         await self.send_message(self.channel_id, message)
@@ -72,6 +72,10 @@ class MN_Bot(Client):
                     except errors.FloodWait as e:
                         logging.warning(f"⚠️ Flood wait triggered! Sleeping for {e.value} seconds.")
                         await asyncio.sleep(e.value)
+                    
+                    # Add delay after last 15 torrents when bot starts
+                    if i == 14:
+                        await asyncio.sleep(3)
 
                 if new_torrents:
                     logging.info(f"✅ Posted {len(new_torrents)} new torrents")
@@ -121,6 +125,46 @@ def crawl_limetorrents():
             continue
         torrents.append({"title": title, "size": size, "link": link})
     return torrents[:15]
+
+# Extract size from Nyaa.si feed (e.g., "1.5 GiB" → "1.5 GB")
+def parse_size_nyaasi(size_str):
+    match = re.search(r"([\d.]+)\s*(GiB|MiB|KiB)", size_str)
+    if not match:
+        return "Unknown"
+    
+    size = float(match.group(1))
+    unit = match.group(2)
+
+    if unit == "GiB":
+        size_gb = size
+    elif unit == "MiB":
+        size_gb = size / 1024
+    elif unit == "KiB":
+        size_gb = size / (1024 * 1024)
+    else:
+        size_gb = 0
+
+    return f"{size_gb:.2f} GB"
+
+# Extract size from YTS feed
+def parse_size_yts(description):
+    match = re.search(r"<b>Size:</b>\s*([\d.]+)\s*(GB|MB|KB)", description)
+    if not match:
+        return "Unknown"
+
+    size = float(match.group(1))
+    unit = match.group(2)
+
+    if unit == "GB":
+        size_gb = size
+    elif unit == "MB":
+        size_gb = size / 1024
+    elif unit == "KB":
+        size_gb = size / (1024 * 1024)
+    else:
+        size_gb = 0
+
+    return f"{size_gb:.2f} GB"
 
 # Check if torrent should be skipped based on size or resolution
 def should_skip_torrent(title, size_str):
