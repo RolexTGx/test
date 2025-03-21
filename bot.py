@@ -2,13 +2,11 @@ import asyncio
 import feedparser
 import logging
 import threading
-import re
-from time import sleep
+import requests
 from flask import Flask
+from bs4 import BeautifulSoup
 from pyrogram import Client, errors
 from config import BOT, API, OWNER, CHANNEL
-import requests
-from bs4 import BeautifulSoup
 
 # Logging setup
 logging.getLogger().setLevel(logging.INFO)
@@ -34,8 +32,8 @@ class MN_Bot(Client):
             plugins=dict(root="plugins"),
             workers=16,
         )
-        self.channel_id = int(CHANNEL.ID)  # Telegram channel ID
-        self.last_posted_links = set()  # Store previously posted torrents
+        self.channel_id = int(CHANNEL.ID)
+        self.last_posted_links = set()
 
     async def start(self):
         await super().start()
@@ -45,7 +43,6 @@ class MN_Bot(Client):
         self.mention = me.mention
         self.username = me.username
 
-        # Start real-time monitoring for new torrents
         asyncio.create_task(self.auto_post_torrents())
 
         await self.send_message(
@@ -59,10 +56,12 @@ class MN_Bot(Client):
         logging.info("Bot Stopped 🙄")
 
     async def auto_post_torrents(self):
-        """Continuously check for new torrents and post them immediately"""
         while True:
             try:
-                torrents = crawl_yts() + crawl_tamilmv() + crawl_eztv() + crawl_psarips() + crawl_torrentfunk()
+                torrents = (
+                    crawl_yts() + crawl_tamilmv() + crawl_tamilblasters() +
+                    crawl_psarips() + crawl_eztv() + crawl_torrentfunk()
+                )
                 new_torrents = [t for t in torrents if t["link"] not in self.last_posted_links]
 
                 for i, torrent in enumerate(new_torrents):
@@ -70,12 +69,11 @@ class MN_Bot(Client):
                     try:
                         await self.send_message(self.channel_id, message)
                         self.last_posted_links.add(torrent["link"])
-                        await asyncio.sleep(3)  # Avoid flood wait
+                        await asyncio.sleep(3)
                     except errors.FloodWait as e:
                         logging.warning(f"⚠️ Flood wait triggered! Sleeping for {e.value} seconds.")
                         await asyncio.sleep(e.value)
-                    
-                    # Add delay after last 15 torrents when bot starts
+
                     if i == 14:
                         await asyncio.sleep(3)
 
@@ -84,16 +82,14 @@ class MN_Bot(Client):
             except Exception as e:
                 logging.error(f"⚠️ Error in auto_post_torrents: {e}")
 
-            await asyncio.sleep(120)  # Check every 2 minutes for new torrents
+            await asyncio.sleep(120)
 
-# Function to check torrent quality limit (under 4K)
 def should_skip_torrent(title):
     if "2160p" in title or "4K" in title:
         logging.info(f"❌ Skipping 4K torrent: {title}")
         return True
     return False
 
-# Function to fetch torrents from YTS RSS feed
 def crawl_yts():
     url = "https://yts.mx/rss/0/all/all/0"
     feed = feedparser.parse(url)
@@ -101,56 +97,93 @@ def crawl_yts():
     for entry in feed.entries:
         title = entry.title
         link = entry.enclosures[0]["href"]
+
         if should_skip_torrent(title):
             continue
+
         torrents.append({"title": title, "size": "Unknown", "link": link})
     return torrents[:15]
 
-# Function to fetch torrents from TamilMV RSS feed
 def crawl_tamilmv():
-    return []  # Implement TamilMV scraping logic
+    url = "https://rss.app/feeds/69I3MD307eQ24CQ5.xml"
+    feed = feedparser.parse(url)
+    torrents = []
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36"
+    }
+    
+    for entry in feed.entries:
+        title = entry.title
+        page_url = entry.link  
 
-# Function to fetch torrents from EZTV
+        if should_skip_torrent(title):
+            continue
+
+        try:
+            response = requests.get(page_url, headers=headers, timeout=10)
+            response.raise_for_status()
+            soup = BeautifulSoup(response.text, "html.parser")
+
+            magnet_link = None
+            for link in soup.find_all("a", href=True):
+                if "magnet:?" in link["href"]:
+                    magnet_link = link["href"]
+                    break  
+
+            if magnet_link:
+                link = magnet_link
+                logging.info(f"✅ Found magnet link for {title}")
+            else:
+                link = page_url  
+                logging.warning(f"⚠️ No magnet link found for {title}")
+
+            torrents.append({"title": title, "size": "Unknown", "link": link})
+        except requests.exceptions.RequestException as e:
+            logging.error(f"⚠️ Error fetching TamilMV magnet link: {e}")
+
+    return torrents[:15]
+
 def crawl_eztv():
     url = "https://eztv.re/ezrss.xml"
     feed = feedparser.parse(url)
     torrents = []
     for entry in feed.entries:
         title = entry.title
-        link = entry.enclosures[0]["href"]
+        link = entry.link
+
         if should_skip_torrent(title):
             continue
+
         torrents.append({"title": title, "size": "Unknown", "link": link})
     return torrents[:15]
 
-# Function to fetch torrents from PSArips RSS feed
 def crawl_psarips():
     url = "https://psa.wf/feed/"
     feed = feedparser.parse(url)
     torrents = []
+    
     for entry in feed.entries:
         title = entry.title
-        page_url = entry.link
-        page_content = requests.get(page_url).text
-        soup = BeautifulSoup(page_content, "html.parser")
-        magnet_link = soup.find("a", href=re.compile("magnet:?"))
-        if magnet_link:
-            torrents.append({"title": title, "size": "Unknown", "link": magnet_link["href"]})
+        link = entry.link  
+
+        if should_skip_torrent(title):
+            continue
+
+        torrents.append({"title": title, "size": "Unknown", "link": link})
     return torrents[:15]
 
-# Function to fetch torrents from TorrentFunk RSS feed
 def crawl_torrentfunk():
-    url = "https://www.torrentfunk.com/rss/movies.rss"
+    url = "https://www.torrentfunk2.com/rss.html"
     feed = feedparser.parse(url)
     torrents = []
     for entry in feed.entries:
         title = entry.title
-        page_url = entry.link
-        page_content = requests.get(page_url).text
-        soup = BeautifulSoup(page_content, "html.parser")
-        magnet_link = soup.find("a", href=re.compile("magnet:?"))
-        if magnet_link:
-            torrents.append({"title": title, "size": "Unknown", "link": magnet_link["href"]})
+        link = entry.link
+
+        if should_skip_torrent(title):
+            continue
+
+        torrents.append({"title": title, "size": "Unknown", "link": link})
     return torrents[:15]
 
 if __name__ == "__main__":
