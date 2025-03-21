@@ -108,8 +108,10 @@ def crawl_tamilmv():
     url = "https://rss.app/feeds/69I3MD307eQ24CQ5.xml"
     feed = feedparser.parse(url)
     torrents = []
+    tamilmv_url = "https://www.1tamilmv.ms/"
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Referer": tamilmv_url,
     }
     
     for entry in feed.entries:
