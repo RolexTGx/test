@@ -60,7 +60,7 @@ class MN_Bot(Client):
         """Continuously check for new torrents and post them immediately"""
         while True:
             try:
-                torrents = crawl_nyaasi() + crawl_yts() + crawl_limetorrents()
+                torrents = crawl_yts() + crawl_tamilmv() + crawl_tamilblasters() + crawl_torrentgalaxy() + crawl_phe()
                 new_torrents = [t for t in torrents if t["link"] not in self.last_posted_links]
 
                 for i, torrent in enumerate(new_torrents):
@@ -84,19 +84,12 @@ class MN_Bot(Client):
 
             await asyncio.sleep(120)  # Check every 2 minutes for new torrents
 
-# Function to fetch torrents from Nyaa.si RSS feed
-def crawl_nyaasi():
-    url = "https://nyaa.si/?page=rss"
-    feed = feedparser.parse(url)
-    torrents = []
-    for entry in feed.entries:
-        title = entry.title
-        size = parse_size_nyaasi(entry.description)
-        link = entry.link
-        if should_skip_torrent(title, size):
-            continue
-        torrents.append({"title": title, "size": size, "link": link})
-    return torrents[:15]
+# Function to check torrent quality limit (under 4K)
+def should_skip_torrent(title):
+    if "2160p" in title or "4K" in title:
+        logging.info(f"❌ Skipping 4K torrent: {title}")
+        return True
+    return False
 
 # Function to fetch torrents from YTS RSS feed
 def crawl_yts():
@@ -105,81 +98,29 @@ def crawl_yts():
     torrents = []
     for entry in feed.entries:
         title = entry.title
-        size = parse_size_yts(entry.description)
         link = entry.enclosures[0]["href"]
-        if should_skip_torrent(title, size):
+
+        if should_skip_torrent(title):
             continue
-        torrents.append({"title": title, "size": size, "link": link})
+
+        torrents.append({"title": title, "size": "Unknown", "link": link})
     return torrents[:15]
 
-# Function to fetch torrents from LimeTorrents RSS feed
-def crawl_limetorrents():
-    url = "https://limetorrents.info/rss/"
-    feed = feedparser.parse(url)
-    torrents = []
-    for entry in feed.entries:
-        title = entry.title
-        size = "Unknown"  # LimeTorrents RSS doesn't provide size info
-        link = entry.link
-        if should_skip_torrent(title, size):
-            continue
-        torrents.append({"title": title, "size": size, "link": link})
-    return torrents[:15]
+# Function to fetch torrents from TamilMV
+def crawl_tamilmv():
+    return []  # Implement TamilMV scraping logic
 
-# Extract size from Nyaa.si feed (e.g., "1.5 GiB" → "1.5 GB")
-def parse_size_nyaasi(size_str):
-    match = re.search(r"([\d.]+)\s*(GiB|MiB|KiB)", size_str)
-    if not match:
-        return "Unknown"
-    
-    size = float(match.group(1))
-    unit = match.group(2)
+# Function to fetch torrents from Tamil Blasters
+def crawl_tamilblasters():
+    return []  # Implement Tamil Blasters scraping logic
 
-    if unit == "GiB":
-        size_gb = size
-    elif unit == "MiB":
-        size_gb = size / 1024
-    elif unit == "KiB":
-        size_gb = size / (1024 * 1024)
-    else:
-        size_gb = 0
+# Function to fetch torrents from Torrent Galaxy
+def crawl_torrentgalaxy():
+    return []  # Implement Torrent Galaxy scraping logic
 
-    return f"{size_gb:.2f} GB"
-
-# Extract size from YTS feed
-def parse_size_yts(description):
-    match = re.search(r"<b>Size:</b>\s*([\d.]+)\s*(GB|MB|KB)", description)
-    if not match:
-        return "Unknown"
-
-    size = float(match.group(1))
-    unit = match.group(2)
-
-    if unit == "GB":
-        size_gb = size
-    elif unit == "MB":
-        size_gb = size / 1024
-    elif unit == "KB":
-        size_gb = size / (1024 * 1024)
-    else:
-        size_gb = 0
-
-    return f"{size_gb:.2f} GB"
-
-# Check if torrent should be skipped based on size or resolution
-def should_skip_torrent(title, size_str):
-    if "2160p" in title or "4K" in title:
-        if size_str == "Unknown":
-            return False  # Allow unknown quality
-        logging.info(f"❌ Skipping 4K torrent: {title}")
-        return True
-    match = re.match(r"([\d.]+)", size_str)
-    if match:
-        size_gb = float(match.group(1))
-        if size_gb > 3.5:
-            logging.info(f"❌ Skipping large torrent: {title} ({size_gb} GB)")
-            return True
-    return False
+# Function to fetch torrents from PHE
+def crawl_phe():
+    return []  # Implement PHE scraping logic
 
 if __name__ == "__main__":
     threading.Thread(target=run_flask).start()
