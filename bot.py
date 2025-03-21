@@ -2,8 +2,6 @@ import asyncio
 import feedparser
 import logging
 import threading
-import re
-from time import sleep
 from flask import Flask
 from pyrogram import Client, errors
 from config import BOT, API, OWNER, CHANNEL
@@ -60,7 +58,10 @@ class MN_Bot(Client):
         """Continuously check for new torrents and post them immediately"""
         while True:
             try:
-                torrents = crawl_yts() + crawl_tamilmv() + crawl_tamilblasters() + crawl_torrentgalaxy() + crawl_phe()
+                torrents = (
+                    crawl_yts() + crawl_tamilmv() + crawl_tamilblasters() +
+                    crawl_psarips() + crawl_eztv() + crawl_torrentfunk()
+                )
                 new_torrents = [t for t in torrents if t["link"] not in self.last_posted_links]
 
                 for i, torrent in enumerate(new_torrents):
@@ -106,21 +107,70 @@ def crawl_yts():
         torrents.append({"title": title, "size": "Unknown", "link": link})
     return torrents[:15]
 
-# Function to fetch torrents from TamilMV
+# Function to fetch torrents from TamilMV RSS feed
 def crawl_tamilmv():
-    return []  # Implement TamilMV scraping logic
+    url = "https://rss.app/feeds/69I3MD307eQ24CQ5.xml"
+    feed = feedparser.parse(url)
+    torrents = []
+    for entry in feed.entries:
+        title = entry.title
+        link = entry.link
 
-# Function to fetch torrents from Tamil Blasters
+        if should_skip_torrent(title):
+            continue
+
+        torrents.append({"title": title, "size": "Unknown", "link": link})
+    return torrents[:15]
+
+# Function to fetch torrents from Tamil Blasters (Placeholder)
 def crawl_tamilblasters():
     return []  # Implement Tamil Blasters scraping logic
 
-# Function to fetch torrents from Torrent Galaxy
-def crawl_torrentgalaxy():
-    return []  # Implement Torrent Galaxy scraping logic
+# Function to fetch torrents from PSArips RSS feed
+def crawl_psarips():
+    url = "https://psa.wf/feed/"
+    feed = feedparser.parse(url)
+    torrents = []
+    
+    for entry in feed.entries:
+        title = entry.title
+        link = entry.link  # This is the page link, not a direct torrent/magnet link
 
-# Function to fetch torrents from PHE
-def crawl_phe():
-    return []  # Implement PHE scraping logic
+        if should_skip_torrent(title):
+            continue
+
+        torrents.append({"title": title, "size": "Unknown", "link": link})
+    return torrents[:15]
+
+# Function to fetch torrents from EZTV RSS feed
+def crawl_eztv():
+    url = "https://eztv.re/ezrss.xml"
+    feed = feedparser.parse(url)
+    torrents = []
+    for entry in feed.entries:
+        title = entry.title
+        link = entry.link
+
+        if should_skip_torrent(title):
+            continue
+
+        torrents.append({"title": title, "size": "Unknown", "link": link})
+    return torrents[:15]
+
+# Function to fetch torrents from TorrentFunk RSS feed
+def crawl_torrentfunk():
+    url = "https://www.torrentfunk2.com/rss.html"
+    feed = feedparser.parse(url)
+    torrents = []
+    for entry in feed.entries:
+        title = entry.title
+        link = entry.link
+
+        if should_skip_torrent(title):
+            continue
+
+        torrents.append({"title": title, "size": "Unknown", "link": link})
+    return torrents[:15]
 
 if __name__ == "__main__":
     threading.Thread(target=run_flask).start()
