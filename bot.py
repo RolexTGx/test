@@ -43,6 +43,7 @@ class MN_Bot(Client):
         self.mention = me.mention
         self.username = me.username
 
+        # Start the auto-posting task
         asyncio.create_task(self.auto_post_torrents())
 
         await self.send_message(
@@ -59,13 +60,18 @@ class MN_Bot(Client):
         while True:
             try:
                 torrents = (
-                    crawl_yts() + crawl_tamilmv() + crawl_tamilblasters() +
-                    crawl_psarips() + crawl_eztv() + crawl_torrentfunk()
+                    crawl_yts() +
+                    crawl_tamilmv() +
+                    crawl_tamilblasters() +
+                    crawl_psarips() +
+                    crawl_eztv() +
+                    crawl_torrentfunk()
                 )
                 new_torrents = [t for t in torrents if t["link"] not in self.last_posted_links]
 
                 for i, torrent in enumerate(new_torrents):
-                    message = f"{torrent['link']}\n\n🎬 {torrent['title']}\n📦 {torrent['size']}\n\n#torrent powered by @MNBOTS"
+                    message = (f"{torrent['link']}\n\n🎬 {torrent['title']}\n📦 {torrent['size']}\n\n"
+                               f"#torrent powered by @MNBOTS")
                     try:
                         await self.send_message(self.channel_id, message)
                         self.last_posted_links.add(torrent["link"])
@@ -81,7 +87,6 @@ class MN_Bot(Client):
                     logging.info(f"✅ Posted {len(new_torrents)} new torrents")
             except Exception as e:
                 logging.error(f"⚠️ Error in auto_post_torrents: {e}")
-
             await asyncio.sleep(120)
 
 def should_skip_torrent(title):
@@ -97,52 +102,68 @@ def crawl_yts():
     for entry in feed.entries:
         title = entry.title
         link = entry.enclosures[0]["href"]
-
         if should_skip_torrent(title):
             continue
-
         torrents.append({"title": title, "size": "Unknown", "link": link})
     return torrents[:15]
 
+# Updated crawl_tamilmv using the new RSS feed from MySitemapGenerator
 def crawl_tamilmv():
-    url = "https://rss.app/feeds/69I3MD307eQ24CQ5.xml"
+    url = "https://cdn.mysitemapgenerator.com/shareapi/rss/12041002372"
     feed = feedparser.parse(url)
     torrents = []
     tamilmv_url = "https://www.1tamilmv.ms/"
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "User-Agent": "Mozilla/5.0",
         "Referer": tamilmv_url,
     }
-    
     for entry in feed.entries:
         title = entry.title
-        page_url = entry.link  
-
+        page_url = entry.link
         if should_skip_torrent(title):
             continue
-
         try:
             response = requests.get(page_url, headers=headers, timeout=10)
             response.raise_for_status()
             soup = BeautifulSoup(response.text, "html.parser")
-
-            magnet_link = None
-            for link in soup.find_all("a", href=True):
-                if "magnet:?" in link["href"]:
-                    magnet_link = link["href"]
-                    break  
-
+            magnet_link = next(
+                (link["href"] for link in soup.find_all("a", href=True)
+                 if "magnet:?" in link["href"]),
+                None
+            )
+            # If a magnet link is found, use it; otherwise retain the original page URL.
+            link = magnet_link if magnet_link else page_url
             if magnet_link:
-                link = magnet_link
                 logging.info(f"✅ Found magnet link for {title}")
             else:
-                link = page_url  
                 logging.warning(f"⚠️ No magnet link found for {title}")
-
             torrents.append({"title": title, "size": "Unknown", "link": link})
         except requests.exceptions.RequestException as e:
             logging.error(f"⚠️ Error fetching TamilMV magnet link: {e}")
+    return torrents[:15]
 
+def crawl_tamilblasters():
+    url = "https://tamilblasters.kokilaprasad.repl.co/feed"
+    feed = feedparser.parse(url)
+    torrents = []
+    for entry in feed.entries:
+        title = entry.title
+        link = entry.link
+        if should_skip_torrent(title):
+            continue
+        torrents.append({"title": title, "size": "Unknown", "link": link})
+    return torrents[:15]
+
+def crawl_psarips():
+    url = "https://psa.wf/feed/"
+    feed = feedparser.parse(url)
+    torrents = []
+    for entry in feed.entries:
+        title = entry.title
+        link = entry.link
+        if should_skip_torrent(title):
+            continue
+        torrents.append({"title": title, "size": "Unknown", "link": link})
     return torrents[:15]
 
 def crawl_eztv():
@@ -152,25 +173,8 @@ def crawl_eztv():
     for entry in feed.entries:
         title = entry.title
         link = entry.link
-
         if should_skip_torrent(title):
             continue
-
-        torrents.append({"title": title, "size": "Unknown", "link": link})
-    return torrents[:15]
-
-def crawl_psarips():
-    url = "https://psa.wf/feed/"
-    feed = feedparser.parse(url)
-    torrents = []
-    
-    for entry in feed.entries:
-        title = entry.title
-        link = entry.link  
-
-        if should_skip_torrent(title):
-            continue
-
         torrents.append({"title": title, "size": "Unknown", "link": link})
     return torrents[:15]
 
@@ -181,13 +185,19 @@ def crawl_torrentfunk():
     for entry in feed.entries:
         title = entry.title
         link = entry.link
-
         if should_skip_torrent(title):
             continue
-
         torrents.append({"title": title, "size": "Unknown", "link": link})
     return torrents[:15]
 
 if __name__ == "__main__":
     threading.Thread(target=run_flask).start()
     MN_Bot().run()
+
+# ---------------------------------------------------
+# To embed the RSS feed into a website, add the following HTML snippet:
+#
+# <div id="mysitemapgenerator_loadcorsdata" data-token="d8e786eaf927b1c1fd5bd819833deae2" data-domain="www.mysitemapgenerator.com"></div>
+# <script src="https://cdn.mysitemapgenerator.com/api/embedfeed.m.js"></script>
+#
+# This snippet loads a dynamic feed widget on your webpage.
