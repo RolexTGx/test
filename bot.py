@@ -3,9 +3,11 @@ import feedparser
 import logging
 import threading
 import requests
+import re
 from flask import Flask
 from bs4 import BeautifulSoup
 from pyrogram import Client, errors
+from urllib.parse import urlparse
 from config import BOT, API, OWNER, CHANNEL
 
 # Logging setup
@@ -21,6 +23,16 @@ def home():
 
 def run_flask():
     app.run(host='0.0.0.0', port=8000)
+
+def extract_size(text):
+    """
+    Extracts a file size from the provided text using regex.
+    Looks for patterns like 12.3 GB, 500 MB, or 123 KB.
+    """
+    match = re.search(r"(\d+(\.\d+)?\s*(GB|MB|KB))", text, re.IGNORECASE)
+    if match:
+        return match.group(1)
+    return "Unknown"
 
 class MN_Bot(Client):
     def __init__(self):
@@ -101,43 +113,43 @@ def crawl_yts():
     torrents = []
     for entry in feed.entries:
         title = entry.title
+        summary = entry.get("summary", "")
+        size = extract_size(summary)
         link = entry.enclosures[0]["href"]
         if should_skip_torrent(title):
             continue
-        torrents.append({"title": title, "size": "Unknown", "link": link})
+        torrents.append({"title": title, "size": size, "link": link})
     return torrents[:15]
 
-# Updated crawl_tamilmv using the new RSS feed from MySitemapGenerator
+# Updated crawl_tamilmv using the MySitemapGenerator RSS feed and dynamic headers.
 def crawl_tamilmv():
     url = "https://cdn.mysitemapgenerator.com/shareapi/rss/12041002372"
     feed = feedparser.parse(url)
     torrents = []
-    tamilmv_url = "https://www.1tamilmv.ms/"
-    headers = {
-        "User-Agent": "Mozilla/5.0",
-        "Referer": tamilmv_url,
-    }
     for entry in feed.entries:
         title = entry.title
         page_url = entry.link
+        summary = entry.get("summary", "")
+        size = extract_size(summary)
         if should_skip_torrent(title):
             continue
         try:
+            parsed = urlparse(page_url)
+            referer = f"{parsed.scheme}://{parsed.netloc}"
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+                "Referer": referer,
+            }
             response = requests.get(page_url, headers=headers, timeout=10)
             response.raise_for_status()
             soup = BeautifulSoup(response.text, "html.parser")
-            magnet_link = next(
-                (link["href"] for link in soup.find_all("a", href=True)
-                 if "magnet:?" in link["href"]),
-                None
-            )
-            # If a magnet link is found, use it; otherwise retain the original page URL.
+            magnet_link = next((link["href"] for link in soup.find_all("a", href=True) if "magnet:?" in link["href"]), None)
             link = magnet_link if magnet_link else page_url
             if magnet_link:
                 logging.info(f"✅ Found magnet link for {title}")
             else:
                 logging.warning(f"⚠️ No magnet link found for {title}")
-            torrents.append({"title": title, "size": "Unknown", "link": link})
+            torrents.append({"title": title, "size": size, "link": link})
         except requests.exceptions.RequestException as e:
             logging.error(f"⚠️ Error fetching TamilMV magnet link: {e}")
     return torrents[:15]
@@ -148,10 +160,12 @@ def crawl_tamilblasters():
     torrents = []
     for entry in feed.entries:
         title = entry.title
+        summary = entry.get("summary", "")
+        size = extract_size(summary)
         link = entry.link
         if should_skip_torrent(title):
             continue
-        torrents.append({"title": title, "size": "Unknown", "link": link})
+        torrents.append({"title": title, "size": size, "link": link})
     return torrents[:15]
 
 def crawl_psarips():
@@ -160,22 +174,27 @@ def crawl_psarips():
     torrents = []
     for entry in feed.entries:
         title = entry.title
+        summary = entry.get("summary", "")
+        size = extract_size(summary)
         link = entry.link
         if should_skip_torrent(title):
             continue
-        torrents.append({"title": title, "size": "Unknown", "link": link})
+        torrents.append({"title": title, "size": size, "link": link})
     return torrents[:15]
 
+# EZTV feed updated to use an alternate URL
 def crawl_eztv():
-    url = "https://eztv.re/ezrss.xml"
+    url = "https://eztv.ag/ezrss.xml"
     feed = feedparser.parse(url)
     torrents = []
     for entry in feed.entries:
         title = entry.title
+        summary = entry.get("summary", "")
+        size = extract_size(summary)
         link = entry.link
         if should_skip_torrent(title):
             continue
-        torrents.append({"title": title, "size": "Unknown", "link": link})
+        torrents.append({"title": title, "size": size, "link": link})
     return torrents[:15]
 
 def crawl_torrentfunk():
@@ -184,10 +203,12 @@ def crawl_torrentfunk():
     torrents = []
     for entry in feed.entries:
         title = entry.title
+        summary = entry.get("summary", "")
+        size = extract_size(summary)
         link = entry.link
         if should_skip_torrent(title):
             continue
-        torrents.append({"title": title, "size": "Unknown", "link": link})
+        torrents.append({"title": title, "size": size, "link": link})
     return torrents[:15]
 
 if __name__ == "__main__":
