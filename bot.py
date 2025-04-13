@@ -4,6 +4,7 @@ import logging
 import threading
 import requests
 import re
+import cloudscraper
 from flask import Flask
 from bs4 import BeautifulSoup
 from pyrogram import Client, errors
@@ -26,17 +27,14 @@ def run_flask():
 
 def extract_size(text):
     """
-    Extracts a file size from the provided text using regex.
-    Looks for patterns like 12.3 GB, 500 MB, or 123 KB.
+    Extracts a file size from text (e.g. 12.3 GB, 500 MB, or 123 KB)
     """
     match = re.search(r"(\d+(\.\d+)?\s*(GB|MB|KB))", text, re.IGNORECASE)
-    if match:
-        return match.group(1)
-    return "Unknown"
+    return match.group(1) if match else "Unknown"
 
 def should_skip_torrent(title):
     """
-    Skips torrents with resolution keywords like '2160p' or '4K'.
+    Skip torrents with 4K/2160p markers.
     """
     if "2160p" in title or "4K" in title:
         logging.info(f"❌ Skipping 4K torrent: {title}")
@@ -54,29 +52,26 @@ def crawl_yts():
         link = entry.enclosures[0]["href"]
         if should_skip_torrent(title):
             continue
-        torrents.append({"title": title, "size": size, "link": link})
+        torrents.append({"title": title, "size": size, "link": link, "site": "#yts"})
     return torrents[:15]
 
 def crawl_tamilmv():
     """
-    Updated TamilMV crawler:
-    - Uses the RSS feed to get a list of entries.
-    - For each entry, fetches the detail page and extracts ALL magnet or torrent links.
-    - If multiple links are found, they are concatenated (each on a new line).
+    Fetches the TamilMV RSS feed, then for each entry uses cloudscraper to bypass Cloudflare and scrape all
+    magnet/torrent links from the detail page. The resulting links (if multiple) are joined together.
     """
     url = "https://cdn.mysitemapgenerator.com/shareapi/rss/12041002372"
     feed = feedparser.parse(url)
     torrents = []
-    
+    scraper = cloudscraper.create_scraper()  # bypass Cloudflare
+
     for entry in feed.entries:
         title = entry.title
         page_url = entry.link
         summary = entry.get("summary", "")
         size = extract_size(summary)
-        
         if should_skip_torrent(title):
             continue
-
         try:
             parsed = urlparse(page_url)
             referer = f"{parsed.scheme}://{parsed.netloc}"
@@ -85,21 +80,18 @@ def crawl_tamilmv():
                 "Referer": referer,
                 "Accept-Language": "en-US,en;q=0.9"
             }
-            response = requests.get(page_url, headers=headers, timeout=10)
+            response = scraper.get(page_url, headers=headers, timeout=10)
             response.raise_for_status()
             soup = BeautifulSoup(response.text, "html.parser")
-            
-            # Extract all magnet links or torrent links (ending with .torrent)
+            # Extract all magnet links and .torrent links
             link_candidates = [
                 a["href"] for a in soup.find_all("a", href=True)
                 if ("magnet:" in a["href"] or a["href"].strip().lower().endswith(".torrent"))
             ]
-            # If at least one candidate is found, join them; otherwise fallback to page_url
             final_link = "\n".join(link_candidates) if link_candidates else page_url
-            torrents.append({"title": title, "size": size, "link": final_link})
-            
+            torrents.append({"title": title, "size": size, "link": final_link, "site": "#tamilmv"})
             logging.info(f"✅ TamilMV: {title} - {len(link_candidates)} link(s) found")
-        except requests.exceptions.RequestException as e:
+        except Exception as e:
             logging.error(f"⚠️ TamilMV error: {e}")
     return torrents[:15]
 
@@ -114,13 +106,17 @@ def crawl_tamilblasters():
         link = entry.link
         if should_skip_torrent(title):
             continue
-        torrents.append({"title": title, "size": size, "link": link})
+        torrents.append({"title": title, "size": size, "link": link, "site": "#tamilblasters"})
     return torrents[:15]
 
 def crawl_psarips():
+    """
+    Uses cloudscraper to bypass Cloudflare for PSArips detail pages.
+    """
     url = "https://psa.wf/feed/"
     feed = feedparser.parse(url)
     torrents = []
+    scraper = cloudscraper.create_scraper()  # bypass Cloudflare
     for entry in feed.entries:
         title = entry.title
         size = "Unknown"
@@ -129,16 +125,17 @@ def crawl_psarips():
             continue
         try:
             headers = {"User-Agent": "Mozilla/5.0", "Accept-Language": "en-US,en;q=0.9"}
-            response = requests.get(link, headers=headers, timeout=10)
+            response = scraper.get(link, headers=headers, timeout=10)
             response.raise_for_status()
             soup = BeautifulSoup(response.text, "html.parser")
-            magnet_link = next(
-                (a["href"] for a in soup.find_all("a", href=True) if a["href"].startswith("magnet:")),
-                None
-            )
-            final_link = magnet_link if magnet_link else link
-            torrents.append({"title": title, "size": size, "link": final_link})
-        except requests.exceptions.RequestException as e:
+            magnet_candidates = [
+                a["href"] for a in soup.find_all("a", href=True)
+                if a["href"].startswith("magnet:")
+            ]
+            final_link = "\n".join(magnet_candidates) if magnet_candidates else link
+            torrents.append({"title": title, "size": size, "link": final_link, "site": "#psa"})
+            logging.info(f"✅ PSArips: {title} - {len(magnet_candidates)} link(s) found")
+        except Exception as e:
             logging.error(f"⚠️ PSArips error: {e}")
     return torrents[:15]
 
@@ -152,7 +149,7 @@ def crawl_eztv():
         size = extract_size(entry.get("summary", ""))
         if should_skip_torrent(title):
             continue
-        torrents.append({"title": title, "size": size, "link": link})
+        torrents.append({"title": title, "size": size, "link": link, "site": "#eztv"})
     return torrents[:15]
 
 def crawl_torrentfunk():
@@ -165,7 +162,7 @@ def crawl_torrentfunk():
         size = extract_size(entry.get("summary", ""))
         if should_skip_torrent(title):
             continue
-        torrents.append({"title": title, "size": size, "link": link})
+        torrents.append({"title": title, "size": size, "link": link, "site": "#torrentfunk"})
     return torrents[:15]
 
 class MN_Bot(Client):
@@ -212,9 +209,11 @@ class MN_Bot(Client):
                 new_torrents = [t for t in torrents if t["link"] not in self.last_posted_links]
 
                 for i, torrent in enumerate(new_torrents):
+                    # Use the site-specific hashtag from the torrent dict (default to "#torrent" if missing)
+                    site_tag = torrent.get("site", "#torrent")
                     message = (
                         f"{torrent['link']}\n\n🎬 {torrent['title']}\n📦 {torrent['size']}\n\n"
-                        f"#torrent powered by @MNBOTS"
+                        f"{site_tag} powered by @MNBOTS"
                     )
                     try:
                         await self.send_message(self.channel_id, message)
@@ -223,15 +222,12 @@ class MN_Bot(Client):
                     except errors.FloodWait as e:
                         logging.warning(f"⚠️ Flood wait: sleeping {e.value} seconds")
                         await asyncio.sleep(e.value)
-
                     if i == 14:
                         await asyncio.sleep(3)
-
                 if new_torrents:
                     logging.info(f"✅ Posted {len(new_torrents)} new torrents")
             except Exception as e:
                 logging.error(f"⚠️ Error in auto_post_torrents: {e}")
-
             await asyncio.sleep(120)
 
 if __name__ == "__main__":
