@@ -99,6 +99,7 @@ def crawl_tamilmv():
 def crawl_psarips():
     """
     Uses cloudscraper to bypass Cloudflare for PSArips detail pages.
+    For tv-show links (e.g. abbott-elementary), it scrapes magnet and .torrent links.
     """
     url = "https://psa.wf/feed/"
     feed = feedparser.parse(url)
@@ -115,9 +116,10 @@ def crawl_psarips():
             response = scraper.get(link, headers=headers, timeout=10)
             response.raise_for_status()
             soup = BeautifulSoup(response.text, "html.parser")
+            # Search for both magnet links and links ending with ".torrent"
             magnet_candidates = [
                 a["href"].strip() for a in soup.find_all("a", href=True)
-                if a["href"].startswith("magnet:")
+                if ("magnet:" in a["href"]) or a["href"].strip().lower().endswith(".torrent")
             ]
             final_link = "\n".join(magnet_candidates) if magnet_candidates else link
             torrents.append({"title": title, "size": size, "link": final_link, "site": "#psa"})
