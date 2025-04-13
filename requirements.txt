@@ -4,6 +4,7 @@ python-dotenv
 TgCrypto
 feedparser
 Flask
+cloudscraper
 requests
 beautifulsoup4
 lxml
