@@ -96,36 +96,26 @@ def crawl_tamilmv():
             logging.error(f"⚠️ TamilMV error: {e}")
     return torrents[:15]
 
-def crawl_psarips():
+def crawl_nyaasi():
     """
-    Uses cloudscraper to bypass Cloudflare for PSArips detail pages.
-    For tv-show links (e.g. abbott-elementary), it scrapes magnet and .torrent links.
+    Scrapes the Nyaasi RSS feed (assumed URL) and extracts torrent info.
+    Adjust the URL below if you use a different domain or query parameters.
     """
-    url = "https://psa.wf/feed/"
+    url = "https://nyaa.si/?page=rss"
     feed = feedparser.parse(url)
     torrents = []
-    scraper = cloudscraper.create_scraper()
     for entry in feed.entries:
         title = entry.title
-        size = "Unknown"
-        link = entry.link
+        summary = entry.get("summary", "")
+        size = extract_size(summary)
+        # Use enclosure if available (usually contains the magnet link)
+        if hasattr(entry, "enclosures") and entry.enclosures:
+            link = entry.enclosures[0]["href"]
+        else:
+            link = entry.link
         if should_skip_torrent(title):
             continue
-        try:
-            headers = {"User-Agent": "Mozilla/5.0", "Accept-Language": "en-US,en;q=0.9"}
-            response = scraper.get(link, headers=headers, timeout=10)
-            response.raise_for_status()
-            soup = BeautifulSoup(response.text, "html.parser")
-            # Search for both magnet links and links ending with ".torrent"
-            magnet_candidates = [
-                a["href"].strip() for a in soup.find_all("a", href=True)
-                if ("magnet:" in a["href"]) or a["href"].strip().lower().endswith(".torrent")
-            ]
-            final_link = "\n".join(magnet_candidates) if magnet_candidates else link
-            torrents.append({"title": title, "size": size, "link": final_link, "site": "#psa"})
-            logging.info(f"✅ PSArips: {title} - {len(magnet_candidates)} link(s) found")
-        except Exception as e:
-            logging.error(f"⚠️ PSArips error: {e}")
+        torrents.append({"title": title, "size": size, "link": link, "site": "#nyaasi"})
     return torrents[:15]
 
 def crawl_eztv():
@@ -144,10 +134,9 @@ def crawl_eztv():
         magnet_link = entry.get("torrent_magneturi", entry.link)
         if should_skip_torrent(title):
             continue
-        torrents.append({"title": title, "size": size, "link": magnet_link})
+        torrents.append({"title": title, "size": size, "link": magnet_link, "site": "#eztv"})
     return torrents[:15]
 
-    
 class MN_Bot(Client):
     MAX_MSG_LENGTH = 4000  # Telegram message text limit
 
@@ -196,7 +185,7 @@ class MN_Bot(Client):
                 torrents = (
                     crawl_yts() +
                     crawl_tamilmv() +
-                    crawl_psarips() +
+                    crawl_nyaasi() +
                     crawl_eztv()
                 )
                 new_torrents = [t for t in torrents if t["link"] not in self.last_posted_links]
