@@ -127,19 +127,25 @@ def crawl_psarips():
     return torrents[:15]
 
 def crawl_eztv():
-    url = "https://eztv.re/ezrss.xml"
+    """
+    EZTV RSS feed is namespaced. Feedparser converts the torrent-specific tags into keys with underscores.
+    For example:
+      - <torrent:contentLength> becomes entry["torrent_contentlength"]
+      - <torrent:magnetURI> becomes entry["torrent_magneturi"]
+    """
+    url = "https://eztvx.to/ezrss.xml"
     feed = feedparser.parse(url)
     torrents = []
     for entry in feed.entries:
         title = entry.title
-        link = entry.link
-        size = extract_size(entry.get("summary", ""))
+        size = entry.get("torrent_contentlength", "Unknown")
+        magnet_link = entry.get("torrent_magneturi", entry.link)
         if should_skip_torrent(title):
             continue
-        torrents.append({"title": title, "size": size, "link": link, "site": "#eztv"})
-    return torrents[:15]
-    
+        torrents.append({"title": title, "size": size, "link": magnet_link})
+    return torrents[:15
 
+    
 class MN_Bot(Client):
     MAX_MSG_LENGTH = 4000  # Telegram message text limit
 
