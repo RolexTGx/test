@@ -96,20 +96,6 @@ def crawl_tamilmv():
             logging.error(f"⚠️ TamilMV error: {e}")
     return torrents[:15]
 
-def crawl_tamilblasters():
-    url = "https://tamilblasters.kokilaprasad.repl.co/feed"
-    feed = feedparser.parse(url)
-    torrents = []
-    for entry in feed.entries:
-        title = entry.title
-        summary = entry.get("summary", "")
-        size = extract_size(summary)
-        link = entry.link
-        if should_skip_torrent(title):
-            continue
-        torrents.append({"title": title, "size": size, "link": link, "site": "#tamilblasters"})
-    return torrents[:15]
-
 def crawl_psarips():
     """
     Uses cloudscraper to bypass Cloudflare for PSArips detail pages.
@@ -152,19 +138,7 @@ def crawl_eztv():
             continue
         torrents.append({"title": title, "size": size, "link": link, "site": "#eztv"})
     return torrents[:15]
-
-def crawl_torrentfunk():
-    url = "https://www.torrentfunk.com/rss/movies.html"
-    feed = feedparser.parse(url)
-    torrents = []
-    for entry in feed.entries:
-        title = entry.title
-        link = entry.link
-        size = extract_size(entry.get("summary", ""))
-        if should_skip_torrent(title):
-            continue
-        torrents.append({"title": title, "size": size, "link": link, "site": "#torrentfunk"})
-    return torrents[:15]
+    
 
 class MN_Bot(Client):
     MAX_MSG_LENGTH = 4000  # Telegram message text limit
@@ -214,10 +188,8 @@ class MN_Bot(Client):
                 torrents = (
                     crawl_yts() +
                     crawl_tamilmv() +
-                    crawl_tamilblasters() +
                     crawl_psarips() +
-                    crawl_eztv() +
-                    crawl_torrentfunk()
+                    crawl_eztv()
                 )
                 new_torrents = [t for t in torrents if t["link"] not in self.last_posted_links]
 
