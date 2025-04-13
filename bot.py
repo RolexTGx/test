@@ -82,8 +82,10 @@ class MN_Bot(Client):
                 new_torrents = [t for t in torrents if t["link"] not in self.last_posted_links]
 
                 for i, torrent in enumerate(new_torrents):
-                    message = (f"{torrent['link']}\n\n🎬 {torrent['title']}\n📦 {torrent['size']}\n\n"
-                               f"#torrent powered by @MNBOTS")
+                    message = (
+                        f"{torrent['link']}\n\n🎬 {torrent['title']}\n📦 {torrent['size']}\n\n"
+                        f"#torrent powered by @MNBOTS"
+                    )
                     try:
                         await self.send_message(self.channel_id, message)
                         self.last_posted_links.add(torrent["link"])
@@ -121,7 +123,6 @@ def crawl_yts():
         torrents.append({"title": title, "size": size, "link": link})
     return torrents[:15]
 
-# Updated crawl_tamilmv using the MySitemapGenerator RSS feed and dynamic headers.
 def crawl_tamilmv():
     url = "https://cdn.mysitemapgenerator.com/shareapi/rss/12041002372"
     feed = feedparser.parse(url)
@@ -143,13 +144,13 @@ def crawl_tamilmv():
             response = requests.get(page_url, headers=headers, timeout=10)
             response.raise_for_status()
             soup = BeautifulSoup(response.text, "html.parser")
-            magnet_link = next((link["href"] for link in soup.find_all("a", href=True) if "magnet:?" in link["href"]), None)
-            link = magnet_link if magnet_link else page_url
+            magnet_link = next((a["href"] for a in soup.find_all("a", href=True) if "magnet:" in a["href"]), None)
+            final_link = magnet_link if magnet_link else page_url
             if magnet_link:
                 logging.info(f"✅ Found magnet link for {title}")
             else:
                 logging.warning(f"⚠️ No magnet link found for {title}")
-            torrents.append({"title": title, "size": size, "link": link})
+            torrents.append({"title": title, "size": size, "link": final_link})
         except requests.exceptions.RequestException as e:
             logging.error(f"⚠️ Error fetching TamilMV magnet link: {e}")
     return torrents[:15]
@@ -169,32 +170,55 @@ def crawl_tamilblasters():
     return torrents[:15]
 
 def crawl_psarips():
+    """
+    PSArips feed is a standard blog feed.
+    Since it does not include torrent-specific metadata,
+    we default file size to "Unknown" and try to scrape a magnet link from the detail page.
+    """
     url = "https://psa.wf/feed/"
     feed = feedparser.parse(url)
     torrents = []
     for entry in feed.entries:
         title = entry.title
-        summary = entry.get("summary", "")
-        size = extract_size(summary)
+        size = "Unknown"
         link = entry.link
         if should_skip_torrent(title):
             continue
-        torrents.append({"title": title, "size": size, "link": link})
+
+        magnet_link = None
+        try:
+            headers = {"User-Agent": "Mozilla/5.0"}
+            response = requests.get(link, headers=headers, timeout=10)
+            response.raise_for_status()
+            soup = BeautifulSoup(response.text, "html.parser")
+            # Look for any anchor tag where href starts with "magnet:"
+            magnet_link = next((a["href"] for a in soup.find_all("a", href=True) if a["href"].startswith("magnet:")), None)
+        except requests.exceptions.RequestException as e:
+            logging.error(f"⚠️ Error fetching PSArips detail page: {e}")
+
+        if magnet_link is None:
+            magnet_link = link  # Fallback to the detail page URL
+
+        torrents.append({"title": title, "size": size, "link": magnet_link})
     return torrents[:15]
 
-# EZTV feed updated to use an alternate URL
 def crawl_eztv():
-    url = "https://eztv.ag/ezrss.xml"
+    """
+    EZTV RSS feed is namespaced. Feedparser converts the torrent-specific tags into keys with underscores.
+    For example:
+      - <torrent:contentLength> becomes entry["torrent_contentlength"]
+      - <torrent:magnetURI> becomes entry["torrent_magneturi"]
+    """
+    url = "https://eztvx.to/ezrss.xml"
     feed = feedparser.parse(url)
     torrents = []
     for entry in feed.entries:
         title = entry.title
-        summary = entry.get("summary", "")
-        size = extract_size(summary)
-        link = entry.link
+        size = entry.get("torrent_contentlength", "Unknown")
+        magnet_link = entry.get("torrent_magneturi", entry.link)
         if should_skip_torrent(title):
             continue
-        torrents.append({"title": title, "size": size, "link": link})
+        torrents.append({"title": title, "size": size, "link": magnet_link})
     return torrents[:15]
 
 def crawl_torrentfunk():
@@ -214,11 +238,3 @@ def crawl_torrentfunk():
 if __name__ == "__main__":
     threading.Thread(target=run_flask).start()
     MN_Bot().run()
-
-# ---------------------------------------------------
-# To embed the RSS feed into a website, add the following HTML snippet:
-#
-# <div id="mysitemapgenerator_loadcorsdata" data-token="d8e786eaf927b1c1fd5bd819833deae2" data-domain="www.mysitemapgenerator.com"></div>
-# <script src="https://cdn.mysitemapgenerator.com/api/embedfeed.m.js"></script>
-#
-# This snippet loads a dynamic feed widget on your webpage.
