@@ -145,7 +145,7 @@ def crawl_eztv():
         if should_skip_torrent(title):
             continue
         torrents.append({"title": title, "size": size, "link": magnet_link})
-    return torrents[:15
+    return torrents[:15]
 
     
 class MN_Bot(Client):
