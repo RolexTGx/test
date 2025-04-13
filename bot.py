@@ -58,9 +58,8 @@ def crawl_yts():
 
 def crawl_tamilmv():
     """
-    Scrapes the TamilMV RSS feed and, for each entry, uses cloudscraper to bypass Cloudflare
-    and fetch the detail page. It then extracts all magnet links and .torrent file links.
-    The returned "link" field contains a newline-separated string of links.
+    Scrapes the TamilMV RSS feed and for each entry uses cloudscraper to bypass Cloudflare,
+    fetching the detail page and extracting all magnet and .torrent file links.
     """
     url = "https://cdn.mysitemapgenerator.com/shareapi/rss/12041002372"
     feed = feedparser.parse(url)
@@ -168,6 +167,8 @@ def crawl_torrentfunk():
     return torrents[:15]
 
 class MN_Bot(Client):
+    MAX_MSG_LENGTH = 4000  # Telegram message text limit
+
     def __init__(self):
         super().__init__(
             "MN-Bot",
@@ -180,6 +181,16 @@ class MN_Bot(Client):
         self.channel_id = int(CHANNEL.ID)
         self.last_posted_links = set()
 
+    async def safe_send_message(self, chat_id, message, **kwargs):
+        """Send a message, splitting into chunks if the text is too long."""
+        if len(message) <= self.MAX_MSG_LENGTH:
+            return await self.send_message(chat_id, message, **kwargs)
+        else:
+            parts = [message[i:i+self.MAX_MSG_LENGTH] for i in range(0, len(message), self.MAX_MSG_LENGTH)]
+            for part in parts:
+                await self.send_message(chat_id, part, **kwargs)
+                await asyncio.sleep(1)
+
     async def start(self):
         await super().start()
         me = await self.get_me()
@@ -191,7 +202,7 @@ class MN_Bot(Client):
             chat_id=int(OWNER.ID),
             text=f"{me.first_name} ✅✅ BOT started successfully ✅✅"
         )
-        logging.info(f"{me.first_name} ✅✅ BOT started successfully ✅✅")
+        logging.info(f"✅ {me.first_name} BOT started successfully")
 
     async def stop(self, *args):
         await super().stop()
@@ -213,12 +224,11 @@ class MN_Bot(Client):
                 for i, torrent in enumerate(new_torrents):
                     site_tag = torrent.get("site", "#torrent")
                     
-                    # Special handling for TamilMV: send each magnet/torrent link in a separate message.
+                    # Special handling for TamilMV: send each magnet/torrent link separately.
                     if site_tag == "#tamilmv":
-                        # Split the concatenated links into a list.
                         links_list = [l.strip() for l in torrent["link"].split("\n") if l.strip()]
                         sent_any = False
-                        # First, if any candidate is a torrent file, try to send it as a document.
+                        # Try sending torrent file if available.
                         for l in links_list:
                             if l.lower().endswith(".torrent"):
                                 try:
@@ -235,26 +245,26 @@ class MN_Bot(Client):
                                     await asyncio.sleep(3)
                                 except Exception as file_err:
                                     logging.error(f"⚠️ Failed to send torrent file for {torrent['title']}: {file_err}")
-                        # If no torrent file was sent, send each magnet link as a separate message.
                         if not sent_any:
+                            # Send each magnet link in a separate message.
                             for l in links_list:
                                 msg = f"{l}\n\n🎬 {torrent['title']}\n📦 {torrent['size']}\n\n#tamilmv powered by @MNBOTS"
                                 try:
-                                    await self.send_message(self.channel_id, msg)
+                                    await self.safe_send_message(self.channel_id, msg)
                                     await asyncio.sleep(3)
                                 except errors.FloodWait as e:
                                     logging.warning(f"⚠️ Flood wait: sleeping {e.value} seconds")
                                     await asyncio.sleep(e.value)
                         self.last_posted_links.add(torrent["link"])
-                        continue  # Skip the remainder of the loop for TamilMV
+                        continue  # Skip to next torrent after handling TamilMV
 
-                    # For other sites, send a single message.
+                    # For other sites, prepare a message.
                     message = (
                         f"{torrent['link']}\n\n🎬 {torrent['title']}\n📦 {torrent['size']}\n\n"
                         f"{site_tag} powered by @MNBOTS"
                     )
                     try:
-                        await self.send_message(self.channel_id, message)
+                        await self.safe_send_message(self.channel_id, message)
                         self.last_posted_links.add(torrent["link"])
                         await asyncio.sleep(3)
                     except errors.FloodWait as e:
