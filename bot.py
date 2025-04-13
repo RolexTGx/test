@@ -97,22 +97,23 @@ def crawl_tamilmv():
     return torrents[:15]
 
 def crawl_nyaasi():
-    """
-    Scrapes the Nyaasi RSS feed (assumed URL) and extracts torrent info.
-    Adjust the URL below if you use a different domain or query parameters.
-    """
     url = "https://nyaa.si/?page=rss"
     feed = feedparser.parse(url)
     torrents = []
     for entry in feed.entries:
         title = entry.title
         summary = entry.get("summary", "")
-        size = extract_size(summary)
-        # Use enclosure if available (usually contains the magnet link)
+        
+        # Parse HTML from summary to extract clean text
+        soup = BeautifulSoup(summary, "html.parser")
+        text = soup.get_text()
+        size = extract_size(text)
+
         if hasattr(entry, "enclosures") and entry.enclosures:
             link = entry.enclosures[0]["href"]
         else:
             link = entry.link
+
         if should_skip_torrent(title):
             continue
         torrents.append({"title": title, "size": size, "link": link, "site": "#nyaasi"})
