@@ -60,67 +60,64 @@ def crawl_yts():
 def extract_tamilmv_post_details(post_url, scraper):
     """
     Given a forum post URL from 1TamilMV, extract file details and download links.
-    Returns a dict with title, size, and a combined link string (torrent and/or magnet).
+    Returns a dict with title, size, and a combined link string.
     """
     response = scraper.get(post_url, timeout=10)
     response.raise_for_status()
     soup = BeautifulSoup(response.text, "html.parser")
     
-    # Extract file details – search for a <strong> tag with specific inline styles.
+    # Example: extract file details from a <strong> tag with specific inline styling.
     file_detail_tag = soup.find("strong", 
                                 style=lambda s: s and "background-color:#ffffff" in s and "font-size:14px" in s)
     file_detail = file_detail_tag.get_text(strip=True) if file_detail_tag else "No file details"
     
-    # Extract torrent link: look for an <a> tag with data-fileext="torrent"
+    # Extract torrent link: look for an <a> with attribute data-fileext="torrent"
     torrent_tag = soup.find("a", attrs={"data-fileext": "torrent"})
     torrent_link = torrent_tag["href"].strip() if torrent_tag and torrent_tag.has_attr("href") else ""
     
-    # Extract magnet link: look for an <a> tag with class "skyblue-button" and href starting with magnet:
+    # Extract magnet link: look for an <a> tag with class "skyblue-button" and href starting with "magnet:"
     magnet_tag = soup.find("a", class_="skyblue-button", href=re.compile(r'^magnet:'))
     magnet_link = magnet_tag["href"].strip() if magnet_tag and magnet_tag.has_attr("href") else ""
     
-    # Combine available links
     links = []
     if torrent_link:
         links.append(torrent_link)
     if magnet_link:
         links.append(magnet_link)
     final_link = "\n".join(links) if links else post_url
-
-    # Use the extracted file detail as the title.
-    title = file_detail
-    # Also extract a size from the whole page text.
+    
+    title = file_detail  # Use the file detail string as title
     size = extract_size(soup.get_text())
     return {"title": title, "size": size, "link": final_link}
 
 def crawl_tamilmv():
     """
-    Scrapes the 1TamilMV website at https://www.1tamilmv.esq.
-    If a thread URL is a forum topic (contains '/forums/topic/'), it extracts file details
-    and magnet/torrent links using extract_tamilmv_post_details().
-    Otherwise, it falls back to a general method that extracts all magnet links and .torrent links.
-    Note: The 4K skip is not applied for TamilMV.
+    Scrapes the 1TamilMV website at https://www.1tamilmv.esq and extracts recent posts.
+    If a thread URL resembles a forum topic (contains '/forums/topic/'),
+    it uses extract_tamilmv_post_details() for detailed extraction.
+    (The global skip for 4K torrents is not applied for TamilMV.)
     """
     base_url = "https://www.1tamilmv.esq"
     torrents = []
     scraper = cloudscraper.create_scraper()  # Cloudflare bypass
 
     try:
-        # Fetch homepage to get recent threads.
         response = scraper.get(base_url, timeout=10)
         response.raise_for_status()
         soup = BeautifulSoup(response.text, "html.parser")
         
-        # Extract thread URLs using the 'thread-title' class.
+        # Adjust selector: Here we assume thread links have class 'thread-title'
         post_links = [a["href"] for a in soup.select("a.thread-title") if a.get("href")]
+        logging.info(f"Found {len(post_links)} thread links on TamilMV homepage.")
+        if not post_links:
+            logging.warning("No thread links found on TamilMV homepage. Check the CSS selector.")
         post_links = post_links[:15]  # Limit to 15 posts
         
         for post_url in post_links:
             try:
-                # Construct full URL if necessary.
                 full_url = post_url if post_url.startswith("http") else base_url + post_url
-                
-                # If this is a forum topic post, use specialized extraction.
+                logging.info(f"Processing TamilMV post: {full_url}")
+                # If this appears to be a forum post URL, extract detailed file info.
                 if "/forums/topic/" in full_url:
                     details = extract_tamilmv_post_details(full_url, scraper)
                     torrents.append({
@@ -131,7 +128,7 @@ def crawl_tamilmv():
                     })
                     logging.info(f"✅ TamilMV Forum: {details['title']} - links extracted")
                 else:
-                    # Fallback: extract using general method.
+                    # Fallback extraction
                     post_response = scraper.get(full_url, timeout=10)
                     post_response.raise_for_status()
                     post_soup = BeautifulSoup(post_response.text, "html.parser")
@@ -141,7 +138,6 @@ def crawl_tamilmv():
                     content = post_soup.get_text()
                     size = extract_size(content)
                     
-                    # Extract magnet and torrent links using CSS selectors.
                     magnet_links = [a["href"].strip() for a in post_soup.select("a[href^='magnet:']")]
                     torrent_links = [a["href"].strip() for a in post_soup.select("a[href$='.torrent']")]
                     links = list(set(magnet_links + torrent_links))
@@ -287,7 +283,7 @@ class MN_Bot(Client):
                                     logging.warning(f"⚠️ Flood wait: sleeping {e.value} seconds")
                                     await asyncio.sleep(e.value)
                         self.last_posted_links.add(torrent["link"])
-                        continue
+                        continue  # Proceed to next torrent after handling TamilMV
 
                     # For other sources, send a combined message.
                     message = (
