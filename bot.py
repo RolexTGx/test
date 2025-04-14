@@ -59,44 +59,59 @@ def crawl_yts():
 
 def extract_tamilmv_post_details(post_url, scraper):
     """
-    Given a forum post URL from 1TamilMV, extract file details and download links.
-    Returns a dict with title, size, and a combined link string.
+    Given a forum post URL from 1TamilMV, this function extracts:
+     - The torrent file's display text (which includes the file name and size),
+     - Downloads the torrent attachment URL, and
+     - Extracts the magnet link.
+    It returns a dict with:
+      - title: the cleaned file name,
+      - size: extracted from the torrent text,
+      - link: a newline-separated combination of the torrent attachment URL and the magnet link.
     """
     response = scraper.get(post_url, timeout=10)
     response.raise_for_status()
     soup = BeautifulSoup(response.text, "html.parser")
     
-    # Example: extract file details from a <strong> tag that contains file info
-    file_detail_tag = soup.find("strong")
-    file_detail = file_detail_tag.get_text(strip=True) if file_detail_tag else "No file details"
-    
-    # Extract torrent file link (look for an <a> with data-fileext="torrent")
+    # Look for the torrent attachment link (for the torrent file)
     torrent_tag = soup.find("a", attrs={"data-fileext": "torrent"})
-    torrent_link = torrent_tag["href"].strip() if torrent_tag and torrent_tag.has_attr("href") else ""
+    if torrent_tag and torrent_tag.has_attr("href"):
+        torrent_link = torrent_tag["href"].strip()
+        # Get the displayed torrent text which contains the file name and size.
+        torrent_text = torrent_tag.get_text(strip=True)
+        # Remove known prefix "www.1TamilMV.esq - " if present.
+        prefix = "www.1TamilMV.esq - "
+        if torrent_text.startswith(prefix):
+            torrent_text = torrent_text[len(prefix):]
+        # Remove trailing ".torrent" if present.
+        if torrent_text.lower().endswith(".torrent"):
+            torrent_text = torrent_text[:-len(".torrent")].strip()
+    else:
+        torrent_link = ""
+        torrent_text = "No file details"
+
+    # Use the torrent text as the title (which should contain the file name)
+    title = torrent_text
+    # Extract size from the torrent text
+    size = extract_size(torrent_text)
     
-    # Extract magnet link: look for an <a> with class "skyblue-button" and href starting with "magnet:"
+    # Extract magnet link from the post using class "skyblue-button"
     magnet_tag = soup.find("a", class_="skyblue-button", href=re.compile(r'^magnet:'))
     magnet_link = magnet_tag["href"].strip() if magnet_tag and magnet_tag.has_attr("href") else ""
     
+    # Build final link string: we'll keep torrent_link and magnet_link separately (separated by newline)
     links = []
     if torrent_link:
         links.append(torrent_link)
     if magnet_link:
         links.append(magnet_link)
     final_link = "\n".join(links) if links else post_url
-
-    # Use the file detail as title and extract size from the page
-    title = file_detail
-    size = extract_size(soup.get_text())
     return {"title": title, "size": size, "link": final_link}
 
 def crawl_tamilmv():
     """
-    Scrapes the 1TamilMV website at https://www.1tamilmv.esq
-    and extracts recent thread links based on URLs containing "/forums/topic/".
-    If a thread URL is a forum topic, it uses extract_tamilmv_post_details()
-    to obtain file details and magnet/torrent links.
-    Note: The 4K/2160p skip is NOT applied for TamilMV.
+    Scrapes the 1TamilMV website at https://www.1tamilmv.esq and extracts recent forum topic links.
+    If a link contains "/forums/topic/", extract file details using extract_tamilmv_post_details().
+    (The 4K/2160p skip is not applied for TamilMV.)
     """
     base_url = "https://www.1tamilmv.esq"
     torrents = []
@@ -109,10 +124,10 @@ def crawl_tamilmv():
         
         # Look for all <a> tags with href containing "/forums/topic/"
         post_links = [a["href"] for a in soup.find_all("a", href=re.compile(r'/forums/topic/')) if a.get("href")]
-        post_links = list(set(post_links))  # Remove duplicates if any
+        post_links = list(set(post_links))
         logging.info(f"Found {len(post_links)} thread links on TamilMV homepage.")
         if not post_links:
-            logging.warning("No thread links found on TamilMV homepage. Check the CSS selector or site structure.")
+            logging.warning("No thread links found on TamilMV homepage. Check the selector or site structure.")
         post_links = post_links[:15]  # Limit to 15 posts
         
         for post_url in post_links:
@@ -127,7 +142,7 @@ def crawl_tamilmv():
                         "link": details["link"],
                         "site": "#tamilmv"
                     })
-                    logging.info(f"✅ TamilMV Forum: {details['title']} - links extracted")
+                    logging.info(f"✅ TamilMV Forum: {details['title']} extracted with size {details['size']}")
                 else:
                     post_response = scraper.get(full_url, timeout=10)
                     post_response.raise_for_status()
@@ -249,14 +264,11 @@ class MN_Bot(Client):
                     crawl_eztv()
                 )
                 new_torrents = [t for t in torrents if t["link"] not in self.last_posted_links]
-
                 for i, torrent in enumerate(new_torrents):
                     site_tag = torrent.get("site", "#torrent")
-                    
-                    # Special handling for TamilMV: send each magnet/torrent link separately.
                     if site_tag == "#tamilmv":
                         links_list = [l.strip() for l in torrent["link"].split("\n") if l.strip()]
-                        sent_any = False
+                        # For TamilMV, send torrent file and magnet link separately.
                         for l in links_list:
                             if l.lower().endswith(".torrent"):
                                 try:
@@ -264,19 +276,18 @@ class MN_Bot(Client):
                                     file_resp = requests.get(l, headers=headers, timeout=10)
                                     file_resp.raise_for_status()
                                     file_bytes = io.BytesIO(file_resp.content)
+                                    # Use the extracted title as file name
                                     filename = torrent["title"].replace(" ", "_") + ".torrent"
                                     await self.send_document(
                                         self.channel_id, file_bytes, file_name=filename,
-                                        caption=f"{torrent['title']}\n📦 {torrent['size']}\n\n#tamilmv powered by @MNBOTS"
+                                        caption=f"{torrent['title']}\n📦 {torrent['size']}\n\n#tamilmv torrent file"
                                     )
-                                    sent_any = True
                                     await asyncio.sleep(3)
                                 except Exception as file_err:
                                     logging.error(f"⚠️ Failed to send torrent file for {torrent['title']}: {file_err}")
-                        if not sent_any:
-                            for l in links_list:
-                                msg = f"{l}\n\n🎬 {torrent['title']}\n📦 {torrent['size']}\n\n#tamilmv powered by @MNBOTS"
+                            elif l.lower().startswith("magnet:"):
                                 try:
+                                    msg = f"{l}\n\n🎬 {torrent['title']}\n📦 {torrent['size']}\n\n#tamilmv magnet link"
                                     await self.safe_send_message(self.channel_id, msg)
                                     await asyncio.sleep(3)
                                 except errors.FloodWait as e:
@@ -284,7 +295,6 @@ class MN_Bot(Client):
                                     await asyncio.sleep(e.value)
                         self.last_posted_links.add(torrent["link"])
                         continue
-
                     # For other sources, send a combined message.
                     message = (
                         f"{torrent['link']}\n\n🎬 {torrent['title']}\n📦 {torrent['size']}\n\n"
