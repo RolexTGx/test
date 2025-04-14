@@ -58,42 +58,59 @@ def crawl_yts():
 
 def crawl_tamilmv():
     """
-    Scrapes the TamilMV RSS feed and for each entry uses cloudscraper to bypass Cloudflare,
-    fetching the detail page and extracting all magnet and .torrent file links.
+    Scrapes the 1TamilMV website at https://www.1tamilmv.esq
+    and extracts recent posts with magnet or .torrent links.
     """
-    url = "https://cdn.mysitemapgenerator.com/shareapi/rss/12041002372"
-    feed = feedparser.parse(url)
+    base_url = "https://www.1tamilmv.esq"
     torrents = []
     scraper = cloudscraper.create_scraper()  # Cloudflare bypass
 
-    for entry in feed.entries:
-        title = entry.title
-        page_url = entry.link
-        summary = entry.get("summary", "")
-        size = extract_size(summary)
-        if should_skip_torrent(title):
-            continue
-        try:
-            parsed = urlparse(page_url)
-            referer = f"{parsed.scheme}://{parsed.netloc}"
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-                "Referer": referer,
-                "Accept-Language": "en-US,en;q=0.9"
-            }
-            response = scraper.get(page_url, headers=headers, timeout=10)
-            response.raise_for_status()
-            soup = BeautifulSoup(response.text, "html.parser")
-            # Extract all magnet links and links ending with ".torrent"
-            link_candidates = [
-                a["href"].strip() for a in soup.find_all("a", href=True)
-                if ("magnet:" in a["href"]) or (a["href"].strip().lower().endswith(".torrent"))
-            ]
-            final_link = "\n".join(link_candidates) if link_candidates else page_url
-            torrents.append({"title": title, "size": size, "link": final_link, "site": "#tamilmv"})
-            logging.info(f"✅ TamilMV: {title} - {len(link_candidates)} link(s) found")
-        except Exception as e:
-            logging.error(f"⚠️ TamilMV error: {e}")
+    try:
+        # Fetch the homepage to extract recent thread URLs.
+        response = scraper.get(base_url, timeout=10)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, "html.parser")
+        
+        # Extract thread links; adjust the CSS selector as needed (here we assume links have class 'thread-title')
+        post_links = [a["href"] for a in soup.select("a.thread-title") if a.get("href")]
+        post_links = post_links[:15]  # Limit to 15 posts
+        
+        for post_url in post_links:
+            try:
+                # Construct full URL if needed.
+                full_url = post_url if post_url.startswith("http") else base_url + post_url
+                post_response = scraper.get(full_url, timeout=10)
+                post_response.raise_for_status()
+                post_soup = BeautifulSoup(post_response.text, "html.parser")
+                
+                # Extract title; adjust the selector according to the page layout.
+                title_tag = post_soup.select_one("h1.thread-title")
+                title = title_tag.get_text(strip=True) if title_tag else "Untitled"
+                content = post_soup.get_text()
+                size = extract_size(content)
+                
+                # Extract all magnet and .torrent links.
+                links = [
+                    a["href"].strip() for a in post_soup.find_all("a", href=True)
+                    if ("magnet:" in a["href"]) or a["href"].strip().lower().endswith(".torrent")
+                ]
+                final_link = "\n".join(links) if links else full_url
+
+                if should_skip_torrent(title):
+                    continue
+
+                torrents.append({
+                    "title": title,
+                    "size": size,
+                    "link": final_link,
+                    "site": "#tamilmv"
+                })
+                logging.info(f"✅ TamilMV: {title} - {len(links)} link(s) found")
+            except Exception as e:
+                logging.error(f"⚠️ TamilMV post error: {e}")
+    except Exception as e:
+        logging.error(f"❌ Failed to scrape TamilMV: {e}")
+
     return torrents[:15]
 
 def crawl_nyaasi():
@@ -102,13 +119,16 @@ def crawl_nyaasi():
     torrents = []
     for entry in feed.entries:
         title = entry.title
-        summary = entry.get("summary", "")
         
-        # Parse HTML from summary to extract clean text
-        soup = BeautifulSoup(summary, "html.parser")
-        text = soup.get_text()
-        size = extract_size(text)
-
+        # Try to use the dedicated nyaa size tag if available.
+        size = entry.get("nyaa_size")
+        if not size:
+            # Fall back to parsing summary if the dedicated tag isn't available.
+            summary = entry.get("summary", "")
+            soup = BeautifulSoup(summary, "html.parser")
+            text = soup.get_text()
+            size = extract_size(text)
+        
         if hasattr(entry, "enclosures") and entry.enclosures:
             link = entry.enclosures[0]["href"]
         else:
@@ -121,7 +141,7 @@ def crawl_nyaasi():
 
 def crawl_eztv():
     """
-    EZTV RSS feed is namespaced. Feedparser converts the torrent-specific tags into keys with underscores.
+    EZTV RSS feed is namespaced. Feedparser converts torrent-specific tags into keys with underscores.
     For example:
       - <torrent:contentLength> becomes entry["torrent_contentlength"]
       - <torrent:magnetURI> becomes entry["torrent_magneturi"]
@@ -158,7 +178,7 @@ class MN_Bot(Client):
         if len(message) <= self.MAX_MSG_LENGTH:
             return await self.send_message(chat_id, message, **kwargs)
         else:
-            parts = [message[i:i+self.MAX_MSG_LENGTH] for i in range(0, len(message), self.MAX_MSG_LENGTH)]
+            parts = [message[i:i + self.MAX_MSG_LENGTH] for i in range(0, len(message), self.MAX_MSG_LENGTH)]
             for part in parts:
                 await self.send_message(chat_id, part, **kwargs)
                 await asyncio.sleep(1)
@@ -198,7 +218,7 @@ class MN_Bot(Client):
                     if site_tag == "#tamilmv":
                         links_list = [l.strip() for l in torrent["link"].split("\n") if l.strip()]
                         sent_any = False
-                        # Try sending torrent file if available.
+                        # Try sending torrent file if one of the links ends with ".torrent".
                         for l in links_list:
                             if l.lower().endswith(".torrent"):
                                 try:
