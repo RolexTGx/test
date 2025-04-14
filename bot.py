@@ -36,9 +36,10 @@ def extract_size(text):
 def should_skip_torrent(title):
     """
     Skips torrents marked as 4K/2160p.
+    This function is used for all sources except where explicitly overridden.
     """
     if "2160p" in title or "4K" in title:
-        logging.info(f"❌ Skipping 4K torrent: {title}")
+        logging.info(f"❌ Skipping torrent: {title}")
         return True
     return False
 
@@ -60,18 +61,19 @@ def crawl_tamilmv():
     """
     Scrapes the 1TamilMV website at https://www.1tamilmv.esq
     and extracts recent posts with magnet or .torrent links.
+    Note: The 4K/2160p skip is NOT applied for TamilMV.
     """
     base_url = "https://www.1tamilmv.esq"
     torrents = []
     scraper = cloudscraper.create_scraper()  # Cloudflare bypass
 
     try:
-        # Fetch the homepage to extract recent thread URLs.
+        # Fetch homepage to get recent threads.
         response = scraper.get(base_url, timeout=10)
         response.raise_for_status()
         soup = BeautifulSoup(response.text, "html.parser")
         
-        # Extract thread links; adjust the CSS selector as needed (here we assume links have class 'thread-title')
+        # Extract thread URLs using the 'thread-title' class.
         post_links = [a["href"] for a in soup.select("a.thread-title") if a.get("href")]
         post_links = post_links[:15]  # Limit to 15 posts
         
@@ -83,22 +85,20 @@ def crawl_tamilmv():
                 post_response.raise_for_status()
                 post_soup = BeautifulSoup(post_response.text, "html.parser")
                 
-                # Extract title; adjust the selector according to the page layout.
+                # Extract the title.
                 title_tag = post_soup.select_one("h1.thread-title")
                 title = title_tag.get_text(strip=True) if title_tag else "Untitled"
                 content = post_soup.get_text()
                 size = extract_size(content)
                 
-                # Extract all magnet and .torrent links.
-                links = [
-                    a["href"].strip() for a in post_soup.find_all("a", href=True)
-                    if ("magnet:" in a["href"]) or a["href"].strip().lower().endswith(".torrent")
-                ]
+                # Extract magnet links and .torrent links using CSS selectors.
+                magnet_links = [a["href"].strip() for a in post_soup.select("a[href^='magnet:']")]
+                torrent_links = [a["href"].strip() for a in post_soup.select("a[href$='.torrent']")]
+                # Combine links and remove duplicates.
+                links = list(set(magnet_links + torrent_links))
                 final_link = "\n".join(links) if links else full_url
-
-                if should_skip_torrent(title):
-                    continue
-
+                
+                # (4K skip is intentionally not applied for TamilMV)
                 torrents.append({
                     "title": title,
                     "size": size,
@@ -120,10 +120,10 @@ def crawl_nyaasi():
     for entry in feed.entries:
         title = entry.title
         
-        # Try to use the dedicated nyaa size tag if available.
+        # Use the dedicated nyaa size tag if present.
         size = entry.get("nyaa_size")
         if not size:
-            # Fall back to parsing summary if the dedicated tag isn't available.
+            # Otherwise, fallback to parsing summary.
             summary = entry.get("summary", "")
             soup = BeautifulSoup(summary, "html.parser")
             text = soup.get_text()
@@ -142,9 +142,7 @@ def crawl_nyaasi():
 def crawl_eztv():
     """
     EZTV RSS feed is namespaced. Feedparser converts torrent-specific tags into keys with underscores.
-    For example:
-      - <torrent:contentLength> becomes entry["torrent_contentlength"]
-      - <torrent:magnetURI> becomes entry["torrent_magneturi"]
+    For example, <torrent:contentLength> becomes entry["torrent_contentlength"].
     """
     url = "https://eztvx.to/ezrss.xml"
     feed = feedparser.parse(url)
@@ -218,7 +216,7 @@ class MN_Bot(Client):
                     if site_tag == "#tamilmv":
                         links_list = [l.strip() for l in torrent["link"].split("\n") if l.strip()]
                         sent_any = False
-                        # Try sending torrent file if one of the links ends with ".torrent".
+                        # Try sending torrent file if any link ends with ".torrent".
                         for l in links_list:
                             if l.lower().endswith(".torrent"):
                                 try:
@@ -236,7 +234,7 @@ class MN_Bot(Client):
                                 except Exception as file_err:
                                     logging.error(f"⚠️ Failed to send torrent file for {torrent['title']}: {file_err}")
                         if not sent_any:
-                            # Send each magnet link in a separate message.
+                            # Send each magnet link as separate messages.
                             for l in links_list:
                                 msg = f"{l}\n\n🎬 {torrent['title']}\n📦 {torrent['size']}\n\n#tamilmv powered by @MNBOTS"
                                 try:
@@ -246,9 +244,9 @@ class MN_Bot(Client):
                                     logging.warning(f"⚠️ Flood wait: sleeping {e.value} seconds")
                                     await asyncio.sleep(e.value)
                         self.last_posted_links.add(torrent["link"])
-                        continue  # Skip to next torrent after handling TamilMV
+                        continue  # Proceed to next torrent after handling TamilMV
 
-                    # For other sites, prepare a message.
+                    # For other sources, send a combined message.
                     message = (
                         f"{torrent['link']}\n\n🎬 {torrent['title']}\n📦 {torrent['size']}\n\n"
                         f"{site_tag} powered by @MNBOTS"
