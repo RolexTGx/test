@@ -61,7 +61,7 @@ def crawl_yts():
             "link": link,
             "site": "#yts"
         })
-    return torrents[:15]
+    return torrents[:5]
 
 def extract_tamilmv_post_details(post_url, scraper):
     """
@@ -163,7 +163,7 @@ def crawl_tamilmv():
                 logging.error(f"⚠️ TamilMV post error ({post_url}): {e}")
     except Exception as e:
         logging.error(f"❌ Failed to scrape TamilMV: {e}")
-    return torrents[:15]
+    return torrents[:5]
 
 def crawl_nyaasi():
     url = "https://nyaa.si/?page=rss"
@@ -189,7 +189,7 @@ def crawl_nyaasi():
             "link": link,
             "site": "#nyaasi"
         })
-    return torrents[:15]
+    return torrents[:5]
 
 def crawl_eztv():
     url = "https://eztvx.to/ezrss.xml"
@@ -207,7 +207,7 @@ def crawl_eztv():
             "link": magnet_link,
             "site": "#eztv"
         })
-    return torrents[:15]
+    return torrents[:5]
 
 # ------------------ Bot Class ------------------
 class MN_Bot(Client):
