@@ -10,7 +10,7 @@ from flask import Flask
 from bs4 import BeautifulSoup
 from pyrogram import Client, errors
 from urllib.parse import urlparse
-from config import BOT, API, OWNER, CHANNEL
+from config import BOT, API, OWNER, CHANNEL, RARE_CHANNEL
 
 # ------------------ Logging Setup ------------------
 logging.getLogger().setLevel(logging.INFO)
@@ -42,6 +42,23 @@ def should_skip_torrent(title):
         logging.info(f"❌ Skipping torrent: {title}")
         return True
     return False
+
+def extract_all_rarefilmm_gofile_links(page_url, scraper):
+    """
+    Fetches the given RareFilmm page and extracts all GOFILE links.
+    Returns a list of GOFILE links.
+    """
+    try:
+        response = scraper.get(page_url, timeout=10)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, "html.parser")
+        # Find all anchor tags with href containing "gofile.io"
+        a_tags = soup.find_all("a", href=re.compile(r"gofile\.io"))
+        links = [a["href"].strip() for a in a_tags if a.has_attr("href")]
+        return links
+    except Exception as e:
+        logging.error(f"Error extracting GOFILE links from {page_url}: {e}")
+        return []
 
 # ------------------ RSS Crawlers for Various Sources ------------------
 def crawl_yts():
@@ -94,7 +111,6 @@ def extract_tamilmv_post_details(post_url, scraper):
                 "link": torrent_link
             })
     
-    # Extract magnet links (if needed, though these will be skipped later)
     magnet_links = []
     magnet_tags = soup.find_all("a", class_="skyblue-button", href=re.compile(r'^magnet:'))
     for tag in magnet_tags:
@@ -236,23 +252,25 @@ def crawl_internet_archive():
 def crawl_rarefilmm():
     """
     Crawls RareFilmm's RSS feed for obscure and hard-to-find films.
-    Returns torrent entries.
+    For each entry, fetches the full page and extracts all GOFILE links.
+    Returns torrent entries with a combined GOFILE link string.
     """
     url = "https://rarefilmm.com/feed/"
     feed = feedparser.parse(url)
     torrents = []
+    scraper = cloudscraper.create_scraper()
     for entry in feed.entries:
         title = entry.title
         summary = entry.get("description", "")
         size = extract_size(summary)
-        if hasattr(entry, "enclosures") and entry.enclosures:
-            link = entry.enclosures[0]["href"]
-        else:
-            link = entry.link
+        page_url = entry.link
+        gofile_links = extract_all_rarefilmm_gofile_links(page_url, scraper)
+        # Join all GOFILE links with newline for clarity
+        combined_link = "\n".join(gofile_links) if gofile_links else page_url
         torrents.append({
             "title": title,
             "size": size,
-            "link": link,
+            "link": combined_link,
             "site": "#rarefilmm"
         })
     return torrents[:5]
@@ -270,7 +288,8 @@ class MN_Bot(Client):
             plugins=dict(root="plugins"),
             workers=16,
         )
-        self.channel_id = int(CHANNEL.ID)
+        self.channel_id = int(CHANNEL["ID"])
+        self.rare_channel_id = int(RARE_CHANNEL["ID"])  # Channel for rare/internetarchive torrents
         self.last_posted_links = set()
 
     async def safe_send_message(self, chat_id, message, **kwargs):
@@ -289,7 +308,7 @@ class MN_Bot(Client):
         self.mention = me.mention
         self.username = me.username
         asyncio.create_task(self.auto_post_torrents())
-        await self.send_message(chat_id=int(OWNER.ID),
+        await self.send_message(chat_id=int(OWNER["ID"]),
                                 text=f"{me.first_name} ✅✅ BOT started successfully ✅✅")
         logging.info(f"✅ {me.first_name} BOT started successfully")
 
@@ -300,7 +319,7 @@ class MN_Bot(Client):
     async def auto_post_torrents(self):
         while True:
             try:
-                # Aggregate torrents from all sources including our new internal archive and rare films RSS feeds.
+                # Aggregate torrents from all sources
                 torrents = (crawl_yts() + crawl_tamilmv() + crawl_nyaasi() + crawl_eztv() +
                             crawl_internet_archive() + crawl_rarefilmm())
                 new_torrents = []
@@ -312,9 +331,16 @@ class MN_Bot(Client):
                             new_torrents.append(t)
                 for i, torrent in enumerate(new_torrents):
                     site_tag = torrent.get("site", "#torrent")
+                    # Determine target channel based on source:
+                    # Internet Archive and RareFilmm go to the rare channel,
+                    # others go to the default channel.
+                    if site_tag in ("#internetarchive", "#rarefilmm"):
+                        target_channel = self.rare_channel_id
+                    else:
+                        target_channel = self.channel_id
+
                     if site_tag == "#tamilmv":
                         for file in torrent["links"]:
-                            # Only process torrent files for TamilMV; skip magnet links.
                             if file["type"] != "torrent":
                                 continue
                             if file["link"] in self.last_posted_links:
@@ -328,7 +354,7 @@ class MN_Bot(Client):
                                     continue
                                 file_bytes = io.BytesIO(file_resp.content)
                                 filename = file["title"].replace(" ", "_") + ".torrent"
-                                await self.send_document(self.channel_id,
+                                await self.send_document(target_channel,
                                                          file_bytes,
                                                          file_name=filename,
                                                          caption=f"{file['title']}\n📦 {torrent['size']}\n\n#tamilmv torrent file")
@@ -349,7 +375,7 @@ class MN_Bot(Client):
                                     continue
                                 file_bytes = io.BytesIO(file_resp.content)
                                 filename = torrent["title"].replace(" ", "_") + ".torrent"
-                                await self.send_document(self.channel_id,
+                                await self.send_document(target_channel,
                                                          file_bytes,
                                                          file_name=filename,
                                                          caption=f"{torrent['title']}\n📦 {torrent['size']}\n\n{site_tag} torrent file")
@@ -361,24 +387,35 @@ class MN_Bot(Client):
                             message = (f"{torrent['link']}\n\n🎬 {torrent['title']}\n"
                                        f"📦 {torrent['size']}\n\n{site_tag} powered by @MNBOTS")
                             try:
-                                await self.safe_send_message(self.channel_id, message)
+                                await self.safe_send_message(target_channel, message)
                                 self.last_posted_links.add(torrent["link"])
                                 await asyncio.sleep(3)
                             except errors.FloodWait as e:
                                 logging.warning(f"⚠️ Flood wait: sleeping {e.value} seconds")
                                 await asyncio.sleep(e.value)
                     else:
-                        message = (f"{torrent['link']}\n\n🎬 {torrent['title']}\n"
-                                   f"📦 {torrent['size']}\n\n{site_tag} powered by @MNBOTS")
-                        try:
-                            await self.safe_send_message(self.channel_id, message)
-                            self.last_posted_links.add(torrent["link"])
-                            await asyncio.sleep(3)
-                        except errors.FloodWait as e:
-                            logging.warning(f"⚠️ Flood wait: sleeping {e.value} seconds")
-                            await asyncio.sleep(e.value)
-                        if i == 14:
-                            await asyncio.sleep(3)
+                        # For RareFilmm, send all GOFILE links in one message.
+                        if site_tag == "#rarefilmm":
+                            message = (f"🎬 {torrent['title']}\n📦 {torrent['size']}\n\nGOFILE Links:\n{torrent['link']}\n\n{site_tag} powered by @MNBOTS")
+                            try:
+                                await self.safe_send_message(target_channel, message)
+                                self.last_posted_links.add(torrent["link"])
+                                await asyncio.sleep(3)
+                            except errors.FloodWait as e:
+                                logging.warning(f"⚠️ Flood wait: sleeping {e.value} seconds")
+                                await asyncio.sleep(e.value)
+                        else:
+                            message = (f"{torrent['link']}\n\n🎬 {torrent['title']}\n"
+                                       f"📦 {torrent['size']}\n\n{site_tag} powered by @MNBOTS")
+                            try:
+                                await self.safe_send_message(target_channel, message)
+                                self.last_posted_links.add(torrent["link"])
+                                await asyncio.sleep(3)
+                            except errors.FloodWait as e:
+                                logging.warning(f"⚠️ Flood wait: sleeping {e.value} seconds")
+                                await asyncio.sleep(e.value)
+                            if i == 14:
+                                await asyncio.sleep(3)
                 if new_torrents:
                     logging.info(f"✅ Posted {len(new_torrents)} new torrents")
             except Exception as e:
