@@ -87,7 +87,7 @@ def crawl_internet_archive():
             "link": link,
             "site": "#internetarchive"
         })
-    return torrents[:5]
+    return torrents[:25]
 
 def crawl_rarefilmm():
     url = "https://rarefilmm.com/feed/"
@@ -107,7 +107,7 @@ def crawl_rarefilmm():
             "link": combined_link,
             "site": "#rarefilmm"
         })
-    return torrents[:5]
+    return torrents[:25]
 
 # ------------------ Bot Class ------------------
 class MN_Bot(Client):
