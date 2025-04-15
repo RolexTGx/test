@@ -209,6 +209,54 @@ def crawl_eztv():
         })
     return torrents[:5]
 
+def crawl_internet_archive():
+    """
+    Crawls the Internet Archive's Vintage Movie Collection RSS feed.
+    Returns torrent entries for public domain movies.
+    """
+    url = "https://archive.org/services/collection-rss.php?collection=feature_films"
+    feed = feedparser.parse(url)
+    torrents = []
+    for entry in feed.entries:
+        title = entry.title
+        summary = entry.get("summary", "")
+        size = extract_size(summary)
+        if hasattr(entry, "enclosures") and entry.enclosures:
+            link = entry.enclosures[0]["href"]
+        else:
+            link = entry.link
+        torrents.append({
+            "title": title,
+            "size": size,
+            "link": link,
+            "site": "#internetarchive"
+        })
+    return torrents[:5]
+
+def crawl_rarefilmm():
+    """
+    Crawls RareFilmm's RSS feed for obscure and hard-to-find films.
+    Returns torrent entries.
+    """
+    url = "https://rarefilmm.com/feed/"
+    feed = feedparser.parse(url)
+    torrents = []
+    for entry in feed.entries:
+        title = entry.title
+        summary = entry.get("description", "")
+        size = extract_size(summary)
+        if hasattr(entry, "enclosures") and entry.enclosures:
+            link = entry.enclosures[0]["href"]
+        else:
+            link = entry.link
+        torrents.append({
+            "title": title,
+            "size": size,
+            "link": link,
+            "site": "#rarefilmm"
+        })
+    return torrents[:5]
+
 # ------------------ Bot Class ------------------
 class MN_Bot(Client):
     MAX_MSG_LENGTH = 4000  # Telegram message text limit
@@ -252,7 +300,9 @@ class MN_Bot(Client):
     async def auto_post_torrents(self):
         while True:
             try:
-                torrents = (crawl_yts() + crawl_tamilmv() + crawl_nyaasi() + crawl_eztv())
+                # Aggregate torrents from all sources including our new internal archive and rare films RSS feeds.
+                torrents = (crawl_yts() + crawl_tamilmv() + crawl_nyaasi() + crawl_eztv() +
+                            crawl_internet_archive() + crawl_rarefilmm())
                 new_torrents = []
                 for t in torrents:
                     if t.get("site") == "#tamilmv":
