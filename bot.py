@@ -8,7 +8,7 @@ import cloudscraper
 import io
 from flask import Flask
 from bs4 import BeautifulSoup
-from pyrogram import Client, errors
+from pyrogram import Client, errors, utils as pyroutils
 from urllib.parse import urlparse
 from config import BOT, API, OWNER, CHANNEL
 
