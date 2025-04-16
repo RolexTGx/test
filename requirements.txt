@@ -13,4 +13,3 @@ bencodepy
 certifi
 urllib3
 setuptools
-pyroutils
