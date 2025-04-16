@@ -53,7 +53,7 @@ def extract_all_rarefilmm_gofile_links(page_url, scraper):
         logging.error(f"Error extracting GOFILE links from {page_url}: {e}")
         return []
 
-# ------------------ RSS Crawlers for Remaining Sources ------------------
+# ------------------ RSS Crawlers ------------------
 def crawl_yts():
     url = "https://yts.mx/rss/0/all/all/0"
     feed = feedparser.parse(url)
@@ -113,45 +113,7 @@ def crawl_rarefilmm():
         })
     return torrents[:25]
 
-# ------------------ New Crawlers for Additional Websites ------------------
-def crawl_retrovision():
-    """
-    Crawl Retrovision for movie links.
-    Assumes the movies page contains <a> tags linking directly to a movie file (.mp4 or .torrent).
-    """
-    url = "https://retrovision.tv/movies/"
-    torrents = []
-    try:
-        scraper = cloudscraper.create_scraper()
-        response = scraper.get(url, timeout=10)
-        response.raise_for_status()
-        soup = BeautifulSoup(response.text, "html.parser")
-        links = soup.find_all("a", href=re.compile(r'\.(mp4|torrent)$'))
-        for a in links:
-            title = a.get_text(strip=True) or "Unknown Title"
-            link = a.get("href")
-            if link.startswith('/'):
-                parsed = urlparse(url)
-                link = f"{parsed.scheme}://{parsed.netloc}{link}"
-            torrents.append({
-                "title": title,
-                "size": "Unknown",
-                "link": link,
-                "site": "#retrovision"
-            })
-        return torrents[:5]
-    except Exception as e:
-        logging.error(f"Error in crawl_retrovision: {e}")
-        return []
-
 def crawl_publicdomain():
-    """
-    Enhanced crawler for PublicDomainTorrents.
-    
-    1. Fetches the homepage and extracts movie detail page URLs.
-    2. For each movie detail page, extracts all torrent file links.
-    3. Each torrent entry includes a combined title (movie title + torrent descriptor), size, and torrent file URL.
-    """
     homepage_url = "https://www.publicdomaintorrents.info/"
     torrents = []
     try:
@@ -188,92 +150,63 @@ def crawl_publicdomain():
         logging.error(f"Error in crawl_publicdomain: {e}")
         return []
 
-def crawl_movieheaven():
-    """
-    Crawl Movie Heaven (forum-based) for .torrent links.
-    """
-    url = "https://forum.movieheaven.xyz/"
-    torrents = []
-    try:
-        response = requests.get(url, timeout=10)
-        response.raise_for_status()
-        soup = BeautifulSoup(response.text, "html.parser")
-        links = soup.find_all("a", href=re.compile(r'\.torrent$'))
-        for a in links:
-            title = a.get_text(strip=True) or "Unknown Title"
-            link = a.get("href")
-            torrents.append({
-                "title": title,
-                "size": "Unknown",
-                "link": link,
-                "site": "#movieheaven"
-            })
-        return torrents[:5]
-    except Exception as e:
-        logging.error(f"Error in crawl_movieheaven: {e}")
-        return []
-
-def crawl_filmyworld():
-    """
-    Crawl Filmyworld (or Old is Gold) for .torrent links.
-    """
-    url = "https://filmyworld.net/"
-    torrents = []
-    try:
-        response = requests.get(url, timeout=10)
-        response.raise_for_status()
-        soup = BeautifulSoup(response.text, "html.parser")
-        links = soup.find_all("a", href=re.compile(r'\.torrent$'))
-        for a in links:
-            title = a.get_text(strip=True) or "Unknown Title"
-            link = a.get("href")
-            torrents.append({
-                "title": title,
-                "size": "Unknown",
-                "link": link,
-                "site": "#filmyworld"
-            })
-        return torrents[:5]
-    except Exception as e:
-        logging.error(f"Error in crawl_filmyworld: {e}")
-        return []
-
 def crawl_tbl():
-    """
-    Crawl 1tamilblasters (tbl) for torrent file links.
-    
-    This crawler uses a hardcoded list of topic URLs (for demonstration).
-    For each topic page, it extracts attachment links (torrent files) and
-    retrieves the title and size from the nested spans.
-    """
-    topic_urls = [
-        "https://www.1tamilblasters.gold/index.php?/forums/topic/129879-exit-speed-2008720p-bdrip-tamil-eng-x264-850mb/"
-    ]
+    homepage_url = "https://www.1tamilblasters.gold/"
     torrents = []
-    for url in topic_urls:
-        try:
-            response = requests.get(url, timeout=10)
-            response.raise_for_status()
-            soup = BeautifulSoup(response.text, "html.parser")
-            # Find all attachment links that point to torrent files.
-            attach_links = soup.find_all("a", href=re.compile(r'/applications/core/interface/file/attachment\.php'))
-            for link in attach_links:
-                torrent_link = link.get("href")
-                if not torrent_link.startswith("http"):
-                    parsed = urlparse(url)
-                    torrent_link = f"{parsed.scheme}://{parsed.netloc}{torrent_link}"
-                title_span = link.find("span", class_="ipsAttachLink_title")
-                title = title_span.get_text(strip=True) if title_span else "Unknown Title"
-                meta_span = link.find("span", class_="ipsAttachLink_metaInfo")
-                size = extract_size(meta_span.get_text(strip=True)) if meta_span else "Unknown"
-                torrents.append({
-                    "title": title,
-                    "size": size,
-                    "link": torrent_link,
-                    "site": "#tbl"
-                })
-        except Exception as e:
-            logging.error(f"Error in crawl_tbl for {url}: {e}")
+
+    try:
+        # Step 1: Get homepage and extract all topic URLs
+        response = requests.get(homepage_url, timeout=10)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, "html.parser")
+
+        topic_links = soup.find_all("a", href=re.compile(r'/index\.php\?/forums/topic/\d+'))
+        topic_urls = []
+        for link in topic_links:
+            href = link.get("href")
+            if href and href.startswith("/"):
+                parsed = urlparse(homepage_url)
+                href = f"{parsed.scheme}://{parsed.netloc}{href}"
+            if href not in topic_urls:
+                topic_urls.append(href)
+
+        # Step 2: Crawl each topic for torrent file attachments
+        for url in topic_urls[:10]:  # Adjust as needed
+            try:
+                detail_response = requests.get(url, timeout=10)
+                detail_response.raise_for_status()
+                detail_soup = BeautifulSoup(detail_response.text, "html.parser")
+
+                attach_links = detail_soup.find_all("a", href=re.compile(r'/applications/core/interface/file/attachment\.php\?id=\d+'))
+                for link in attach_links:
+                    torrent_link = link.get("href")
+                    if not torrent_link.startswith("http"):
+                        parsed = urlparse(url)
+                        torrent_link = f"{parsed.scheme}://{parsed.netloc}{torrent_link}"
+
+                    title_span = link.find("span", class_="ipsAttachLink_title")
+                    raw_title = title_span.get_text(strip=True) if title_span else "Unknown"
+                    title = re.sub(r'^(www\.[^\s]+?\s*-\s*)?', '', raw_title)
+                    title = re.sub(r'\.torrent$', '', title).strip()
+
+                    meta_span = link.find("span", class_="ipsAttachLink_metaInfo")
+                    meta_text = meta_span.get_text(strip=True) if meta_span else ""
+                    size_match = re.search(r"(\d+(\.\d+)?\s*(GB|MB|KB))", meta_text, re.IGNORECASE)
+                    size = size_match.group(1) if size_match else "Unknown"
+
+                    torrents.append({
+                        "title": title,
+                        "size": size,
+                        "link": torrent_link,
+                        "site": "#tbl"
+                    })
+
+            except Exception as detail_err:
+                logging.error(f"Error fetching torrent from {url}: {detail_err}")
+
+    except Exception as e:
+        logging.error(f"Error in crawl_tbl homepage: {e}")
+
     return torrents
 
 # ------------------ Bot Class ------------------
@@ -302,7 +235,6 @@ class MN_Bot(Client):
                 await asyncio.sleep(1)
 
     async def post_torrent(self, torrent):
-        """Common function to post a torrent link or file to the target channel."""
         site_tag = torrent.get("site", "#torrent")
         target_channel = self.channel_id
         if torrent["link"].lower().endswith(".torrent"):
@@ -331,15 +263,11 @@ class MN_Bot(Client):
             await asyncio.sleep(e.value)
 
     async def initial_post_torrents(self):
-        """Immediately post 5 links per source on bot restart."""
         crawler_functions = [
             crawl_yts,
             crawl_internet_archive,
             crawl_rarefilmm,
-            crawl_retrovision,
             crawl_publicdomain,
-            crawl_movieheaven,
-            crawl_filmyworld,
             crawl_tbl
         ]
         for crawler in crawler_functions:
@@ -354,17 +282,13 @@ class MN_Bot(Client):
                 logging.error(f"Error posting initial torrents from {crawler.__name__}: {e}")
 
     async def auto_post_torrents(self):
-        """Periodically check for new torrents and post them."""
         while True:
             try:
                 torrents = (
                     crawl_yts() +
                     crawl_internet_archive() +
                     crawl_rarefilmm() +
-                    crawl_retrovision() +
                     crawl_publicdomain() +
-                    crawl_movieheaven() +
-                    crawl_filmyworld() +
                     crawl_tbl()
                 )
                 new_torrents = [t for t in torrents if t.get("link") not in self.last_posted_links]
