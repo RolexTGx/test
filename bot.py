@@ -127,12 +127,10 @@ def crawl_retrovision():
         response = scraper.get(url, timeout=10)
         response.raise_for_status()
         soup = BeautifulSoup(response.text, "html.parser")
-        # Look for links ending with .mp4 or .torrent
         links = soup.find_all("a", href=re.compile(r'\.(mp4|torrent)$'))
         for a in links:
             title = a.get_text(strip=True) or "Unknown Title"
             link = a.get("href")
-            # Handle relative links
             if link.startswith('/'):
                 parsed = urlparse(url)
                 link = f"{parsed.scheme}://{parsed.netloc}{link}"
@@ -151,9 +149,9 @@ def crawl_publicdomain():
     """
     Enhanced crawler for PublicDomainTorrents.
     
-    1. Fetches the homepage (https://www.publicdomaintorrents.info/) and extracts movie detail page URLs.
-    2. For each movie detail page (e.g., nshowmovie.html?movieid=255), it extracts all torrent file links.
-    3. Each torrent entry includes a combined title (movie title + torrent descriptor), size (if found), and the torrent file URL.
+    1. Fetches the homepage and extracts movie detail page URLs.
+    2. For each movie detail page, extracts all torrent file links.
+    3. Each torrent entry includes a combined title (movie title + torrent descriptor), size, and torrent file URL.
     """
     homepage_url = "https://www.publicdomaintorrents.info/"
     torrents = []
@@ -161,10 +159,7 @@ def crawl_publicdomain():
         response = requests.get(homepage_url, timeout=10)
         response.raise_for_status()
         soup = BeautifulSoup(response.text, "html.parser")
-        # Find movie links matching the pattern 'nshowmovie.html?movieid=...'
         movie_links = soup.find_all("a", href=re.compile(r'^nshowmovie\.html\?movieid=\d+'))
-        
-        # Limit to first 5 movies from homepage
         for movie_link in movie_links[:5]:
             movie_title = movie_link.get_text(strip=True) or "Unknown Title"
             detail_url = movie_link.get("href")
@@ -174,7 +169,6 @@ def crawl_publicdomain():
                 detail_response = requests.get(detail_url, timeout=10)
                 detail_response.raise_for_status()
                 detail_soup = BeautifulSoup(detail_response.text, "html.parser")
-                # Extract all torrent links (those with 'btdownload.php?type=torrent' in the URL)
                 torrent_tags = detail_soup.find_all("a", href=re.compile(r'btdownload\.php\?type=torrent'))
                 for tag in torrent_tags:
                     torrent_text = tag.get_text(strip=True)
@@ -198,8 +192,6 @@ def crawl_publicdomain():
 def crawl_movieheaven():
     """
     Crawl Movie Heaven (forum-based) for .torrent links.
-    This is a basic implementation; if the forum uses login or has a complex structure,
-    additional handling may be required.
     """
     url = "https://forum.movieheaven.xyz/"
     torrents = []
@@ -207,7 +199,6 @@ def crawl_movieheaven():
         response = requests.get(url, timeout=10)
         response.raise_for_status()
         soup = BeautifulSoup(response.text, "html.parser")
-        # Look for <a> tags that likely reference torrent files
         links = soup.find_all("a", href=re.compile(r'\.torrent$'))
         for a in links:
             title = a.get_text(strip=True) or "Unknown Title"
@@ -233,7 +224,6 @@ def crawl_filmyworld():
         response = requests.get(url, timeout=10)
         response.raise_for_status()
         soup = BeautifulSoup(response.text, "html.parser")
-        # Extract <a> tags with links ending with .torrent
         links = soup.find_all("a", href=re.compile(r'\.torrent$'))
         for a in links:
             title = a.get_text(strip=True) or "Unknown Title"
@@ -248,6 +238,44 @@ def crawl_filmyworld():
     except Exception as e:
         logging.error(f"Error in crawl_filmyworld: {e}")
         return []
+
+def crawl_tbl():
+    """
+    Crawl 1tamilblasters (tbl) for torrent file links.
+    
+    This crawler uses a hardcoded list of topic URLs (for demonstration).
+    For each topic page, it extracts attachment links (torrent files) and
+    retrieves the title and size from the nested spans.
+    """
+    topic_urls = [
+        "https://www.1tamilblasters.gold/index.php?/forums/topic/129879-exit-speed-2008720p-bdrip-tamil-eng-x264-850mb/"
+    ]
+    torrents = []
+    for url in topic_urls:
+        try:
+            response = requests.get(url, timeout=10)
+            response.raise_for_status()
+            soup = BeautifulSoup(response.text, "html.parser")
+            # Find all attachment links that point to torrent files.
+            attach_links = soup.find_all("a", href=re.compile(r'/applications/core/interface/file/attachment\.php'))
+            for link in attach_links:
+                torrent_link = link.get("href")
+                if not torrent_link.startswith("http"):
+                    parsed = urlparse(url)
+                    torrent_link = f"{parsed.scheme}://{parsed.netloc}{torrent_link}"
+                title_span = link.find("span", class_="ipsAttachLink_title")
+                title = title_span.get_text(strip=True) if title_span else "Unknown Title"
+                meta_span = link.find("span", class_="ipsAttachLink_metaInfo")
+                size = extract_size(meta_span.get_text(strip=True)) if meta_span else "Unknown"
+                torrents.append({
+                    "title": title,
+                    "size": size,
+                    "link": torrent_link,
+                    "site": "#tbl"
+                })
+        except Exception as e:
+            logging.error(f"Error in crawl_tbl for {url}: {e}")
+    return torrents
 
 # ------------------ Bot Class ------------------
 class MN_Bot(Client):
@@ -278,7 +306,6 @@ class MN_Bot(Client):
         """Common function to post a torrent link or file to the target channel."""
         site_tag = torrent.get("site", "#torrent")
         target_channel = self.channel_id
-        # If the torrent link appears to be a file (ends with .torrent), try to download and send it as a document.
         if torrent["link"].lower().endswith(".torrent"):
             try:
                 scraper_download = cloudscraper.create_scraper()
@@ -296,8 +323,6 @@ class MN_Bot(Client):
                     raise Exception("Empty torrent file content")
             except Exception as file_err:
                 logging.error(f"⚠️ Failed to send torrent file for {torrent['title']}: {file_err}")
-                # Fallback to sending the link as a message if document sending fails.
-        # Fallback: Send the torrent link as a message.
         message = (f"{torrent['link']}\n\n🎬 {torrent['title']}\n"
                    f"📦 {torrent['size']}\n\n{site_tag} powered by @MNBOTS")
         try:
@@ -315,12 +340,12 @@ class MN_Bot(Client):
             crawl_retrovision,
             crawl_publicdomain,
             crawl_movieheaven,
-            crawl_filmyworld
+            crawl_filmyworld,
+            crawl_tbl
         ]
         for crawler in crawler_functions:
             try:
                 torrents = crawler()
-                # Only consider the first 5 torrents from each source
                 for torrent in torrents[:5]:
                     if torrent.get("link") not in self.last_posted_links:
                         await self.post_torrent(torrent)
@@ -333,7 +358,6 @@ class MN_Bot(Client):
         """Periodically check for new torrents and post them."""
         while True:
             try:
-                # Aggregate torrents from all sources
                 torrents = (
                     crawl_yts() +
                     crawl_internet_archive() +
@@ -341,15 +365,14 @@ class MN_Bot(Client):
                     crawl_retrovision() +
                     crawl_publicdomain() +
                     crawl_movieheaven() +
-                    crawl_filmyworld()
+                    crawl_filmyworld() +
+                    crawl_tbl()
                 )
                 new_torrents = [t for t in torrents if t.get("link") not in self.last_posted_links]
-
                 for torrent in new_torrents:
                     await self.post_torrent(torrent)
                     self.last_posted_links.add(torrent["link"])
                     await asyncio.sleep(3)
-
                 if new_torrents:
                     logging.info(f"✅ Posted {len(new_torrents)} new torrents")
             except Exception as e:
@@ -362,9 +385,7 @@ class MN_Bot(Client):
         BOT.USERNAME = f"@{me.username}"
         self.mention = me.mention
         self.username = me.username
-        # Immediately post initial torrents (5 links per source) on restart
         await self.initial_post_torrents()
-        # Then continue with periodic auto posting
         asyncio.create_task(self.auto_post_torrents())
         await self.send_message(chat_id=OWNER.ID,
                                 text=f"{me.first_name} ✅✅ BOT started successfully ✅✅")
