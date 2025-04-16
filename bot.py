@@ -144,29 +144,48 @@ def crawl_retrovision():
 
 def crawl_publicdomain():
     """
-    Crawl PublicDomainTorrents for .torrent links.
+    Enhanced crawler for PublicDomainTorrents.
+    
+    1. Fetches the homepage (https://www.publicdomaintorrents.info/) and extracts movie detail page URLs.
+    2. For each movie detail page (e.g., nshowmovie.html?movieid=255), it extracts all torrent file links.
+    3. Each torrent entry includes a combined title (movie title + torrent descriptor), size (if found), and the torrent file URL.
     """
-    url = "http://www.publicdomaintorrents.info/"
+    homepage_url = "https://www.publicdomaintorrents.info/"
     torrents = []
     try:
-        response = requests.get(url, timeout=10)
+        response = requests.get(homepage_url, timeout=10)
         response.raise_for_status()
         soup = BeautifulSoup(response.text, "html.parser")
-        # Find <a> tags whose href ends with .torrent
-        links = soup.find_all("a", href=re.compile(r'\.torrent$'))
-        for a in links:
-            title = a.get_text(strip=True) or "Unknown Title"
-            link = a.get("href")
-            if link.startswith('/'):
-                parsed = urlparse(url)
-                link = f"{parsed.scheme}://{parsed.netloc}{link}"
-            torrents.append({
-                "title": title,
-                "size": "Unknown",
-                "link": link,
-                "site": "#publicdomaintorrents"
-            })
-        return torrents[:5]
+        # Find movie links matching the pattern 'nshowmovie.html?movieid=...'
+        movie_links = soup.find_all("a", href=re.compile(r'^nshowmovie\.html\?movieid=\d+'))
+        
+        # Limit to first 5 movies from homepage
+        for movie_link in movie_links[:5]:
+            movie_title = movie_link.get_text(strip=True) or "Unknown Title"
+            detail_url = movie_link.get("href")
+            if detail_url.startswith("nshowmovie.html"):
+                detail_url = homepage_url + detail_url
+            try:
+                detail_response = requests.get(detail_url, timeout=10)
+                detail_response.raise_for_status()
+                detail_soup = BeautifulSoup(detail_response.text, "html.parser")
+                # Extract all torrent links (those with 'btdownload.php?type=torrent' in the URL)
+                torrent_tags = detail_soup.find_all("a", href=re.compile(r'btdownload\.php\?type=torrent'))
+                for tag in torrent_tags:
+                    torrent_text = tag.get_text(strip=True)
+                    torrent_link = tag.get("href")
+                    if torrent_link.startswith('/'):
+                        torrent_link = "http://www.publicdomaintorrents.com" + torrent_link
+                    size = extract_size(torrent_text)
+                    torrents.append({
+                        "title": f"{movie_title} - {torrent_text}",
+                        "size": size,
+                        "link": torrent_link,
+                        "site": "#publicdomaintorrents"
+                    })
+            except Exception as detail_err:
+                logging.error(f"Error fetching detail page {detail_url}: {detail_err}")
+        return torrents
     except Exception as e:
         logging.error(f"Error in crawl_publicdomain: {e}")
         return []
