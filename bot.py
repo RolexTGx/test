@@ -13,7 +13,6 @@ from urllib.parse import urlparse
 from config import BOT, API, OWNER, CHANNEL
 
 # ** Peer ID Fix **
-import pyroutils
 pyroutils.MIN_CHAT_ID = -999999999999
 pyroutils.MIN_CHANNEL_ID = -10099999999999
 
