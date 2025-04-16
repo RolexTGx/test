@@ -12,6 +12,11 @@ from pyrogram import Client, errors
 from urllib.parse import urlparse
 from config import BOT, API, OWNER, CHANNEL
 
+# ** Peer ID Fix **
+import pyroutils
+pyroutils.MIN_CHAT_ID = -999999999999
+pyroutils.MIN_CHANNEL_ID = -10099999999999
+
 # ------------------ Logging Setup ------------------
 logging.getLogger().setLevel(logging.INFO)
 logging.getLogger("pyrogram").setLevel(logging.ERROR)
@@ -273,30 +278,33 @@ class MN_Bot(Client):
         """Common function to post a torrent link or file to the target channel."""
         site_tag = torrent.get("site", "#torrent")
         target_channel = self.channel_id
-        if site_tag == "#yts" and torrent["link"].lower().endswith(".torrent"):
+        # If the torrent link appears to be a file (ends with .torrent), try to download and send it as a document.
+        if torrent["link"].lower().endswith(".torrent"):
             try:
                 scraper_download = cloudscraper.create_scraper()
                 file_resp = scraper_download.get(torrent["link"], timeout=10)
                 file_resp.raise_for_status()
-                if not file_resp.content:
-                    logging.error(f"⚠️ Empty torrent file content for {torrent['title']}")
+                if file_resp.content:
+                    file_bytes = io.BytesIO(file_resp.content)
+                    filename = torrent["title"].replace(" ", "_") + ".torrent"
+                    await self.send_document(target_channel,
+                                             file_bytes,
+                                             file_name=filename,
+                                             caption=f"{torrent['title']}\n📦 {torrent['size']}\n\n{site_tag} torrent file")
                     return
-                file_bytes = io.BytesIO(file_resp.content)
-                filename = torrent["title"].replace(" ", "_") + ".torrent"
-                await self.send_document(target_channel,
-                                         file_bytes,
-                                         file_name=filename,
-                                         caption=f"{torrent['title']}\n📦 {torrent['size']}\n\n{site_tag} torrent file")
+                else:
+                    raise Exception("Empty torrent file content")
             except Exception as file_err:
                 logging.error(f"⚠️ Failed to send torrent file for {torrent['title']}: {file_err}")
-        else:
-            message = (f"{torrent['link']}\n\n🎬 {torrent['title']}\n"
-                       f"📦 {torrent['size']}\n\n{site_tag} powered by @MNBOTS")
-            try:
-                await self.safe_send_message(target_channel, message)
-            except errors.FloodWait as e:
-                logging.warning(f"⚠️ Flood wait: sleeping {e.value} seconds")
-                await asyncio.sleep(e.value)
+                # Fallback to sending the link as a message if document sending fails.
+        # Fallback: Send the torrent link as a message.
+        message = (f"{torrent['link']}\n\n🎬 {torrent['title']}\n"
+                   f"📦 {torrent['size']}\n\n{site_tag} powered by @MNBOTS")
+        try:
+            await self.safe_send_message(target_channel, message)
+        except errors.FloodWait as e:
+            logging.warning(f"⚠️ Flood wait: sleeping {e.value} seconds")
+            await asyncio.sleep(e.value)
 
     async def initial_post_torrents(self):
         """Immediately post 5 links per source on bot restart."""
