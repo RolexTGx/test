@@ -1,20 +1,18 @@
 services:
   - type: web
-    name: Andi
-    plan: free
+    name: MN-Bot
     env: python
+    region: oregon
     buildCommand: "pip install -r requirements.txt"
     startCommand: "python bot.py"
     envVars:
-      - key: TOKEN
-        description: "Telegram Bot token from @BotFather"
-        sync: false
-      - key: API_HASH
-        description: "Telegram API hash from https://my.telegram.org"
-        sync: false
+      - key: BOT_TOKEN
+        value: "<your-bot-token>"
       - key: API_ID
-        description: "Telegram API ID from https://my.telegram.org"
-        sync: false
+        value: "<your-api-id>"
+      - key: API_HASH
+        value: "<your-api-hash>"
       - key: OWNER
-        description: "Owner's Telegram user ID (from @userinfobot)"
-        sync: false
+        value: "<your-owner-id>"
+      - key: CHANNEL
+        value: "<your-channel-id>"
