@@ -35,13 +35,6 @@ class CHANNEL:
     ID = int(os.environ.get("CHANNEL_ID", 0))
 
 
-class RARE_CHANNEL:
-    """
-    ID: Rare Telegram Channel ID for special torrent posts
-    """
-    ID = int(os.environ.get("RARE_CHANNEL_ID", 0))
-
-
 class WEB:
     """
     PORT: Specific port no. on which you want to run your bot, DON'T TOUCH IT IF YOU DON'T KNOW WHAT IS IT.
