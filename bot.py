@@ -25,10 +25,15 @@ def run_flask():
 
 # ------------------ Utility Function ------------------
 def extract_size(text):
-    match = re.search(r"(\d+(\.\d+)?\s*(GB|MB|KB))", text, re.IGNORECASE)
-    return match.group(1) if match else "Unknown"
+    """
+    Extracts file size (e.g., '1.4 GB', '700 MB', '512KB') from a text string.
+    Returns 'Unknown' if no size pattern is found.
+    """
+    match = re.search(r"(\d+(?:\.\d+)?\s*(?:GB|MB|KB))", text, re.IGNORECASE)
+    return match.group(1).upper().replace(' ', '') if match else "Unknown"
 
 # ------------------ 1TamilMV Crawler ------------------
+
 def extract_tamilmv_post_details(post_url, scraper):
     response = scraper.get(post_url, timeout=10)
     response.raise_for_status()
@@ -45,11 +50,26 @@ def extract_tamilmv_post_details(post_url, scraper):
             title = title[len(prefix):]
         if title.lower().endswith(".torrent"):
             title = title[:-len(".torrent")].strip()
-        torrent_files.append({"type": "torrent", "title": title, "link": link})
+
+        # Extract size from the file title
+        file_size = extract_size(title)
+
+        torrent_files.append({
+            "type": "torrent",
+            "title": title,
+            "link": link,
+            "size": file_size,
+        })
 
     overall_title = torrent_files[0]["title"] if torrent_files else "TamilMV Post"
-    size = extract_size(overall_title)
-    return {"thread_url": post_url, "title": overall_title, "size": size, "links": torrent_files}
+    overall_size = extract_size(overall_title)
+    return {
+        "thread_url": post_url,
+        "title": overall_title,
+        "size": overall_size,
+        "links": torrent_files,
+    }
+
 
 def crawl_tamilmv():
     base_url = "https://www.1tamilmv.esq"
@@ -128,7 +148,7 @@ class MN_Bot(Client):
                     if tid not in self.seen_threads:
                         logging.info(f"New thread detected: {tid}")
                         for file in thread["links"]:
-                            await self._send_torrent(file, thread["size"])
+                            await self._send_torrent(file)
                         self.seen_threads.add(tid)
 
                     # EXISTING THREAD: post only *new* files
@@ -136,7 +156,7 @@ class MN_Bot(Client):
                         for file in thread["links"]:
                             if file["link"] not in self.last_posted:
                                 logging.info(f"New file in known thread: {file['link']}")
-                                await self._send_torrent(file, thread["size"])
+                                await self._send_torrent(file)
 
                 logging.info(f"Sleeping for 15 minutes…")
             except Exception as e:
@@ -144,7 +164,7 @@ class MN_Bot(Client):
 
             await asyncio.sleep(900)  # 15 minutes
 
-    async def _send_torrent(self, file, size):
+    async def _send_torrent(self, file):
         link = file["link"]
         try:
             scraper = cloudscraper.create_scraper()
@@ -152,11 +172,12 @@ class MN_Bot(Client):
             resp.raise_for_status()
             bio = io.BytesIO(resp.content)
             filename = f"{file['title'].replace(' ', '_')}.torrent"
+            caption = f"{file['title']}\n📦 {file['size']}\n\n#tamilmv"
             await self.send_document(
                 self.channel_id,
                 bio,
                 file_name=filename,
-                caption=f"{file['title']}\n📦 {size}\n\n#tamilmv"
+                caption=caption
             )
             self.last_posted.add(link)
             await asyncio.sleep(3)
