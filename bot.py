@@ -35,7 +35,7 @@ def extract_size(text):
 
 # Crawl 1TamilMV for torrent files, returning topic URL + its files
 def crawl_tamilmv():
-    base_url = "https://www.1tamilmv.esq"
+    base_url = "https://www.1tamilmv.moi"
     torrents = []
     scraper = cloudscraper.create_scraper()
 
