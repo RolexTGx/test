@@ -4,6 +4,7 @@ import threading
 import io
 import re
 import cloudscraper
+from urllib.parse import urlparse
 from flask import Flask
 from bs4 import BeautifulSoup
 from pyrogram import Client, errors
@@ -15,29 +16,43 @@ logging.getLogger("pyrogram").setLevel(logging.ERROR)
 
 # ------------------ Flask App for Health Check ------------------
 app = Flask(__name__)
-
 @app.route('/')
 def home():
     return "Bot is running!"
-
 def run_flask():
     app.run(host='0.0.0.0', port=8000)
+
+# ------------------ Dynamic Domain Resolution ------------------
+def resolve_tamilmv_base(redirector="https://1tamilmv.com"):
+    """
+    Hits the generic redirector and returns the current official root URL,
+    e.g. "https://www.1tamilmv.esq" or whatever they've moved to.
+    Falls back to a known default if resolution fails.
+    """
+    scraper = cloudscraper.create_scraper()
+    try:
+        resp = scraper.get(redirector, timeout=10, allow_redirects=True)
+        resp.raise_for_status()
+        parsed = urlparse(resp.url)
+        return f"{parsed.scheme}://{parsed.netloc}"
+    except Exception as e:
+        logging.warning(f"Could not resolve via {redirector}: {e}")
+        return "https://www.1tamilmv.esq"
 
 # ------------------ Utility Function ------------------
 def extract_size(text):
     """
-    Extracts file size (e.g., '1.4 GB', '700 MB', '512KB') from a text string.
-    Returns 'Unknown' if no size pattern is found.
+    Extracts file size (e.g., '1.4 GB', '700 MB', '512 KB') from text.
+    Supports GB, MB, KB (case‑insensitive).
     """
     match = re.search(r"(\d+(?:\.\d+)?\s*(?:GB|MB|KB))", text, re.IGNORECASE)
-    return match.group(1).upper().replace(' ', '') if match else "Unknown"
+    return match.group(1).strip() if match else "Unknown"
 
 # ------------------ 1TamilMV Crawler ------------------
-
 def extract_tamilmv_post_details(post_url, scraper):
-    response = scraper.get(post_url, timeout=10)
-    response.raise_for_status()
-    soup = BeautifulSoup(response.text, "html.parser")
+    resp = scraper.get(post_url, timeout=10)
+    resp.raise_for_status()
+    soup = BeautifulSoup(resp.text, "html.parser")
 
     torrent_files = []
     for tag in soup.find_all("a", attrs={"data-fileext": "torrent"}):
@@ -49,11 +64,9 @@ def extract_tamilmv_post_details(post_url, scraper):
         if title.startswith(prefix):
             title = title[len(prefix):]
         if title.lower().endswith(".torrent"):
-            title = title[:-len(".torrent")].strip()
+            title = title[:-8].strip()
 
-        # Extract size from the file title
         file_size = extract_size(title)
-
         torrent_files.append({
             "type": "torrent",
             "title": title,
@@ -70,9 +83,9 @@ def extract_tamilmv_post_details(post_url, scraper):
         "links": torrent_files,
     }
 
-
 def crawl_tamilmv():
-    base_url = "https://www.1tamilmv.esq"
+    # dynamically find the real base each run
+    base_url = resolve_tamilmv_base()  
     scraper = cloudscraper.create_scraper()
     torrents = []
 
@@ -81,7 +94,6 @@ def crawl_tamilmv():
         resp.raise_for_status()
         soup = BeautifulSoup(resp.text, "html.parser")
 
-        # Collect up to 15 unique topic URLs
         post_paths = {
             a["href"]
             for a in soup.find_all("a", href=re.compile(r'/forums/topic/'))
@@ -101,10 +113,9 @@ def crawl_tamilmv():
 
     return torrents
 
-# ------------------ Bot Class ------------------
+# ------------------ Bot Class and Main (unchanged) ------------------
 class MN_Bot(Client):
     MAX_MSG_LENGTH = 4000
-
     def __init__(self):
         super().__init__(
             "MN-Bot",
@@ -140,29 +151,21 @@ class MN_Bot(Client):
     async def auto_post_torrents(self):
         while True:
             try:
-                all_threads = crawl_tamilmv()
-                for thread in all_threads:
+                for thread in crawl_tamilmv():
                     tid = thread["thread_url"]
 
-                    # NEW FORUM THREAD: post *all* its torrent-files
                     if tid not in self.seen_threads:
-                        logging.info(f"New thread detected: {tid}")
                         for file in thread["links"]:
                             await self._send_torrent(file)
                         self.seen_threads.add(tid)
-
-                    # EXISTING THREAD: post only *new* files
                     else:
                         for file in thread["links"]:
                             if file["link"] not in self.last_posted:
-                                logging.info(f"New file in known thread: {file['link']}")
                                 await self._send_torrent(file)
-
-                logging.info(f"Sleeping for 15 minutes…")
+                await asyncio.sleep(900)
             except Exception as e:
                 logging.error(f"auto_post_torrents error: {e}")
-
-            await asyncio.sleep(900)  # 15 minutes
+                await asyncio.sleep(900)
 
     async def _send_torrent(self, file):
         link = file["link"]
@@ -173,18 +176,12 @@ class MN_Bot(Client):
             bio = io.BytesIO(resp.content)
             filename = f"{file['title'].replace(' ', '_')}.torrent"
             caption = f"{file['title']}\n📦 {file['size']}\n\n#tamilmv"
-            await self.send_document(
-                self.channel_id,
-                bio,
-                file_name=filename,
-                caption=caption
-            )
+            await self.send_document(self.channel_id, bio, file_name=filename, caption=caption)
             self.last_posted.add(link)
             await asyncio.sleep(3)
         except Exception as ex:
             logging.error(f"Failed to send {file['title']}: {ex}")
 
-# ------------------ Main ------------------
 if __name__ == "__main__":
     threading.Thread(target=run_flask).start()
     MN_Bot().run()
