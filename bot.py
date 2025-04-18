@@ -2,12 +2,10 @@ import asyncio
 import logging
 import threading
 import io
-
+import re
+import cloudscraper
 from flask import Flask
 from bs4 import BeautifulSoup
-import cloudscraper
-import re
-
 from pyrogram import Client, errors, utils as pyroutils
 from config import BOT, API, OWNER, CHANNEL
 
@@ -35,9 +33,9 @@ def extract_size(text):
     match = re.search(r"(\d+(?:\.\d+)?\s*(?:GB|MB|KB))", text, re.IGNORECASE)
     return match.group(1) if match else "Unknown"
 
-# Crawl 1TamilBlasters for torrent files, returning topic URL + its files
-def crawl_tbl():
-    base_url = "https://www.1tamilblasters.gold"
+# Crawl 1TamilMV for torrent files, returning topic URL + its files
+def crawl_tamilmv():
+    base_url = "https://www.1tamilmv.esq"
     torrents = []
     scraper = cloudscraper.create_scraper()
 
@@ -66,8 +64,7 @@ def crawl_tbl():
                         continue
                     link = href.strip()
                     raw_text = tag.get_text(strip=True)
-                    title = raw_text.replace("www.1TamilBlasters.red - ", "")\
-                                    .rstrip(".torrent").strip()
+                    title = raw_text.replace("www.1TamilMV.esq - ", "").rstrip(".torrent").strip()
                     size = extract_size(raw_text)
 
                     file_links.append({
@@ -86,10 +83,10 @@ def crawl_tbl():
                     })
 
             except Exception as post_err:
-                logging.error(f"Failed to parse TBL topic {rel_url}: {post_err}")
+                logging.error(f"Failed to parse TamilMV topic {rel_url}: {post_err}")
 
     except Exception as e:
-        logging.error(f"Failed to fetch TBL homepage: {e}")
+        logging.error(f"Failed to fetch TamilMV homepage: {e}")
 
     return torrents
 
@@ -118,10 +115,10 @@ class MN_Bot(Client):
     async def auto_post_torrents(self):
         while True:
             try:
-                torrents = crawl_tbl()
+                torrents = crawl_tamilmv()
                 for t in torrents:
                     topic = t["topic_url"]
-                    # find brand‑new files in this topic
+                    # find new files in this topic
                     new_files = [f for f in t["links"] if f["link"] not in self.last_posted]
                     # if we've seen this topic and there are no new files, skip
                     if topic in self.seen_topics and not new_files:
@@ -138,7 +135,7 @@ class MN_Bot(Client):
                             caption = (
                                 f"{file['title']}\n"
                                 f"📦 {file['size']}\n"
-                                "#tbl torrent file"
+                                "#tamilmv torrent file"
                             )
                             await self.send_document(
                                 self.channel_id,
@@ -147,10 +144,10 @@ class MN_Bot(Client):
                                 caption=caption
                             )
                             self.last_posted.add(file["link"])
-                            logging.info(f"Posted TBL: {file['title']}")
+                            logging.info(f"Posted TamilMV: {file['title']}")
                             await asyncio.sleep(3)
                         except Exception as e:
-                            logging.error(f"Error sending TBL file {file['link']}: {e}")
+                            logging.error(f"Error sending TamilMV file {file['link']}: {e}")
 
                     # mark this topic as seen
                     self.seen_topics.add(topic)
@@ -167,9 +164,9 @@ class MN_Bot(Client):
         BOT.USERNAME = f"@{me.username}"
         await self.send_message(
             OWNER.ID,
-            text=f"{me.first_name} ✅ BOT started with only TBL support (15‑min checks)"
+            text=f"{me.first_name} ✅ BOT started with only TamilMV support (15‑min checks)"
         )
-        logging.info("MN-Bot started with only TBL support")
+        logging.info("MN-Bot started with only TamilMV support")
         asyncio.create_task(self.auto_post_torrents())
 
     async def stop(self, *args):
