@@ -52,7 +52,7 @@ def extract_tamilmv_post_details(post_url, scraper):
     return {"thread_url": post_url, "title": overall_title, "size": size, "links": torrent_files}
 
 def crawl_tamilmv():
-    base_url = "https://www.1tamilmv.esq"
+    base_url = "https://www.1tamilmv.moi"
     scraper = cloudscraper.create_scraper()
     torrents = []
 
