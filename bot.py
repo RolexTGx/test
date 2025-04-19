@@ -30,7 +30,7 @@ def extract_size(text):
 
 # ------------------ TamilMV Crawler ------------------
 def extract_tamilmv_post_details(post_url, scraper):
-    response = scraper.get(post_url, timeout=10)
+    response = scraper.get(post_url)
     response.raise_for_status()
     soup = BeautifulSoup(response.text, "html.parser")
 
@@ -69,7 +69,7 @@ def crawl_tamilmv():
     torrents = []
 
     try:
-        resp = scraper.get(base_url, timeout=10)
+        resp = scraper.get(base_url)
         resp.raise_for_status()
         soup = BeautifulSoup(resp.text, "html.parser")
 
@@ -96,7 +96,7 @@ def crawl_tbl():
     scraper = cloudscraper.create_scraper()
 
     try:
-        resp = scraper.get(base_url, timeout=10)
+        resp = scraper.get(base_url)
         resp.raise_for_status()
         soup = BeautifulSoup(resp.text, "html.parser")
 
@@ -107,7 +107,7 @@ def crawl_tbl():
         for rel_url in list(dict.fromkeys(topic_links))[:15]:
             try:
                 full_url = rel_url if rel_url.startswith("http") else base_url + rel_url
-                dresp = scraper.get(full_url, timeout=10)
+                dresp = scraper.get(full_url)
                 dresp.raise_for_status()
                 post_soup = BeautifulSoup(dresp.text, "html.parser")
 
@@ -208,7 +208,7 @@ class MN_Bot(Client):
     async def _send_torrent(self, file, tag):
         try:
             scraper = cloudscraper.create_scraper()
-            resp = scraper.get(file["link"], timeout=10)
+            resp = scraper.get(file["link"])
             resp.raise_for_status()
             bio = io.BytesIO(resp.content)
             filename = f"{file['title'].replace(' ', '_')}.torrent"
